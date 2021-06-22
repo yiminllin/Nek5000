@@ -19,7 +19,7 @@ c TODO: set as a .par file param
 #endif
 
 c TODO: hardcoding default 10, to set as a .par file param
-      cbnodes = min(1024,np)
+      cbnodes = min(10,np)
  
       etime0 = dnekclock_sync()
 
@@ -56,25 +56,18 @@ c TODO: hardcoding default 10, to set as a .par file param
      &                      ifbswap,ifbc)
          enddo
       else
-         write(6,*) 'Calling bin_rd1_ (NOMPIIO)'
-         call nek_file_read(re2_h,idummy,int8(21),int8(0),ierr)
-         call bin_rd1_mesh(ifbswap)
-         call bin_rd1_curve(ifbswap)
-         do ifield = ibc,nfldt
-            call bin_rd1_bc (cbc(1,1,ifield),bc(1,1,1,ifield),
-     &                       ifbswap)
-         enddo
+c TODO: hardcoded
+          npr=min(1024,np)
+          re2off_b=21*4
 
-c       write(6,*) 'Calling bin_rd2_* (NOMPIIO)'
-c       write(6,*) 'Calling bin_rd2_mesh (NOMPIIO)'
-c       call bin_rd2_mesh (ifbswap,ifxyz,cbnodes)
-c       write(6,*) 'Calling bin_rd2_curve (NOMPIIO)'
-c       call bin_rd2_curve(ifbswap,ifcur,cbnodes)
-c       write(6,*) 'Calling bin_rd2_bc (NOMPIIO)'
-c       do ifield = ibc,nfldt
-c          call bin_rd2_bc(cbc(1,1,ifield),bc(1,1,1,ifield),
-c    &                     ifbswap,ifbc,cbnodes)
-c       enddo
+          write(6,*) 'Calling bin_rd2_ (NOMPIIO)'
+          call bin_rd2_mesh (ifbswap,ifxyz,npr)
+          call bin_rd2_curve(ifbswap,ifcur,npr)
+          do ifield = ibc,nfldt
+             call bin_rd2_bc(cbc(1,1,ifield),bc(1,1,1,ifield),
+     $                       ifbswap,ifbc,npr)
+          enddo
+
       endif
       call nek_file_close(re2_h,ierr)
       call fgslib_crystal_free(cr_re2)
@@ -877,7 +870,6 @@ c-----------------------------------------------------------------------
       end
 
 
-
 c-----------------------------------------------------------------------
       subroutine bin_rd2_mesh(ifbswap,ifread,npr) ! version 2 of .re2 reader
 
@@ -1155,7 +1147,6 @@ c-----------------------------------------------------------------------
 
       integer buf(ni-2,1),vi(ni,1)
       logical ifswp,if1ie
-c      integer tmp_hdl
       character*132 fname
 
       melg=ielg1-ielg0+1
@@ -1169,18 +1160,11 @@ c      integer tmp_hdl
 
       jelg=igl_running_sum(nel)-nel+ielg0
       joff=ioff+(jelg-1)*nbsize
-      
-c TODO: use a temporary handle, very ugly... to refactor...
+
       if (nel.ne.0) then
          call byte_open(fname,ierr)
          call byte_seek(joff,ierr)
          call byte_read(buf,nbsize*nel,ierr)
-c         call nek_file_open(nekcomm,tmp_hdl,re2fle,
-c     $                      0,ifmpiio,cbnodes,ierr)
-         write(6,*) 'int8(nbsize*nel)', int8(nbsize*nel)
-         write(6,*) 'int8(joff)', int8(joff)
-         call nek_file_read(tmp_hdl,buf,int8(nbsize*nel),
-     $                      int8(joff),ierr)
 
          do i = 1,nel
             jj      = (i-1)*nbsize + 1
@@ -1205,8 +1189,6 @@ c              if (wdsizi.eq.8) call copyi4(ielg,buf(jj,1),1)
             enddo
          enddo
          call byte_close(ierr)
-c         call nek_file_close(tmp_hdl,ierr)
-c         tmp_hdl = 0 ! TODO: how to free memory?
       endif
 
       nrmax=(lx1*ly1*lz1*lelt*4)/ni
