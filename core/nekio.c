@@ -236,8 +236,11 @@ int NEK_File_read(void *handle, void *buf, long long int *count, long long int *
     ierr_p = 0;
     ierr_g = 0;
 
+    printf("- rank %d, start nek_file_read -\n", rank);
     ierr_p = (*count < 0);
+    printf("- rank %d, start check count %lld -\n", rank, *count);
     MPI_Allreduce(&ierr_p,&ierr_g,1,MPI_INT,MPI_LOR,comm);
+    printf("- rank %d, end check count %lld -\n", rank, *count);
     if (ierr_g) { return NEKIO_RDERR_COUNT; }
 
     if (nek_fh->mpiio) {
@@ -276,26 +279,37 @@ int NEK_File_read(void *handle, void *buf, long long int *count, long long int *
         nbyte_g = 0;
         
         // Check access mode
+        printf("-- rank %d, check bmode %d --\n", rank, nek_fh->bmode);
         ierr_p = (!((nek_fh->bmode)==READ || (nek_fh->bmode)==READWRITE));
         MPI_Allreduce(&ierr_p,&ierr_g,1,MPI_INT,MPI_LOR,comm);
+        printf("-- rank %d, end check bmode %d --\n", rank, nek_fh->bmode);
         if (ierr_g) { return NEKIO_RDERR_ACCMD; }
         
         // Determine total number of bytes to read and global start/end index 
         start_p = *offset;
         end_p   = *offset+*count;
+        printf("-- rank %d, get start_g with start_p %lld, end_p %lld --\n", rank, start_p, end_p);
         MPI_Allreduce(&start_p,&start_g,1,MPI_LONG_LONG,MPI_MIN,comm);
+        printf("-- rank %d, end get start_g with start_g %lld -- \n", rank, start_g);
+        printf("-- rank %d, get end_g with start_p %lld, end_p %lld --\n", rank, start_p, end_p);
         MPI_Allreduce(&end_p  ,&end_g  ,1,MPI_LONG_LONG,MPI_MAX,comm);
+        printf("-- rank %d, end get end_g with end_g %lld -- \n", rank, end_g);
+        printf("-- rank %d, get nbyte_t with count %lld --\n", rank, *count);
         MPI_Allreduce(count   ,&nbyte_t,1,MPI_LONG_LONG,MPI_SUM,comm);
+        printf("-- rank %d, get nbyte_t with nbyte_t %lld --\n", rank, nbyte_t);
 
         // Determine byte to read for each iorank
         nbyte_g  = end_g-start_g;
         nbyte    = get_nbyte(nbyte_g, num_iorank, rank, iorank_interval);
         start_io = get_start_io(start_g, nbyte_g, num_iorank, rank, iorank_interval);
         end_io   = start_io + nbyte;
+        printf("============ rank %d, ========= start_p %lld, end_p %lld, nbyte_g %lld, nbyte %lld, start_io %lld, end_io %lld\n", rank, start_p, end_p, nbyte_g, nbyte, start_io, end_io);        
 
         // Check overlapping
         ierr_p = (nbyte_t != nbyte_g);
+        printf("-- rank %d, check overlapping %d --\n", rank, ierr_p);
         MPI_Allreduce(&ierr_p,&ierr_g,1,MPI_INT,MPI_LOR,comm);
+        printf("-- rank %d, end check overlapping %d --\n", rank, ierr_g);
         if (ierr_g) { return NEKIO_RDERR_OVRLP; }
         
         // Tuple list on each process, add the iorank correspond to current process
@@ -303,6 +317,7 @@ int NEK_File_read(void *handle, void *buf, long long int *count, long long int *
 
         p  = (nek_fh->tarr).ptr;
         nr = 0;
+        printf("---- rank %d, start fill tuple list tarr ----\n", rank);
         for (int io = 0; io < num_iorank; ++io) {
             sid = get_start_io(start_g, nbyte_g, num_iorank, io*iorank_interval, iorank_interval);
             eid = sid+get_nbyte(nbyte_g, num_iorank, io*iorank_interval, iorank_interval);
@@ -316,32 +331,44 @@ int NEK_File_read(void *handle, void *buf, long long int *count, long long int *
             }
         }
         (nek_fh->tarr).n = nr;
+        printf("---- rank %d, end fill tuple list tarr, with length of tarr %lld ----\n", rank, nr);
         
         // Pass tuple list to io ranks
+        printf("---- rank %d, start first sarray transfer ----\n", rank);
         sarray_transfer(nektp,&(nek_fh->tarr),iorank,1,&(nek_fh->cr));
+        printf("---- rank %d, end first sarray transfer ----\n", rank);
 
         // Send read data in CB_BUFFER_SIZE chunks
         num_pass = (nbyte_g % num_iorank == 0) ? (nbyte_g/num_iorank-1)/CB_BUFFER_SIZE+1 : (nbyte_g/num_iorank)/CB_BUFFER_SIZE+1;
+        printf("---- rank %d, start sending in passes with num_pass %d ----\n", rank, num_pass);
         for (int n_pass = 0; n_pass < num_pass; ++n_pass) {
+
             nbyte_b = (n_pass < num_pass-1) ? CB_BUFFER_SIZE : nbyte-n_pass*CB_BUFFER_SIZE; 
             start_b = start_io+n_pass*CB_BUFFER_SIZE;
             end_b   = start_io+n_pass*CB_BUFFER_SIZE+nbyte_b;
+            printf("---- rank %d, n_pass %d, nbyte_b %lld, start_b %lld, end_b %lld ----\n", rank, n_pass, nbyte_b, start_b, end_b);
 
             // If we are in a io node, read blocks with size <= CB_BUFFER_SIZE to tmp_buf
             if (is_iorank(rank,iorank_interval,num_iorank)) {
+                printf("---- rank %d is iorank, start fseek + fread ----\n", rank);
                 tmp_buffer = array_reserve(char,&(nek_fh->tmp_buf),nbyte_b);
                 ierr_p = fseek(nek_fh->file,start_io+n_pass*CB_BUFFER_SIZE,SEEK_SET);
                 fread(tmp_buffer,1,nbyte_b,nek_fh->file);
+                printf("---- rank %d is iorank, end fseek + fread ----\n", rank);
             }
 
             // Check for file error
             ierr_p = (ierr_p || ferror(nek_fh->file) || feof(nek_fh->file));
+            printf("---- rank %d start check for file error ierr_p: %d ----\n", rank, ierr_p);
             MPI_Allreduce(&ierr_p,&ierr_g,1,MPI_INT,MPI_LOR,comm);
+            printf("---- rank %d end check for file error ierr_g: %d ----\n",rank, ierr_g);
             if (ierr_g) { return NEKIO_RDERR_CREAD; }
             
             // In io ranks, traverse through each byte read before, and put into sarray_transform if
             // appears in the tuple list
+            printf("---- rank %d start array reserve io2parr ----\n", rank);
             d = array_reserve(nekfb, &(nek_fh->io2parr), nproc);
+            printf("---- rank %d end array reserve io2parr ----\n",rank);
             d = (nek_fh->io2parr).ptr;
             s = (nek_fh->io2parr).ptr;
             p = (nek_fh->tarr).ptr;
@@ -349,6 +376,7 @@ int NEK_File_read(void *handle, void *buf, long long int *count, long long int *
             nr = 0;
             
             // For each child of iorank
+            printf("---- rank %d start filling io2parr ----\n", rank);
             for (int k = 0; k < (nek_fh->tarr).n; ++k) {
                 e = p+k;
 
@@ -371,18 +399,22 @@ int NEK_File_read(void *handle, void *buf, long long int *count, long long int *
 
             }
             (nek_fh->io2parr).n = nr;
+            printf("---- rank %d end filling io2parr, with length %lld----\n",rank, nr);
 
             // Pass data in iorank to individual processes
+            printf("---- rank %d, start second sarray transfer ----\n", rank);
             sarray_transfer(nekfb,&(nek_fh->io2parr),proc,1,&(nek_fh->cr));
-     
+            printf("---- rank %d, end second sarray transfer ----\n", rank);
             // Traverse through io_to_proc_array, and put byte into buffer
             d = (nek_fh->io2parr).ptr;
             s = (nek_fh->io2parr).ptr;
-
+            
+            printf("---- rank %d, start put in data with new n: %zu  ----\n", rank, (nek_fh->io2parr).n);
             for (int k = 0; k < (nek_fh->io2parr).n; k++) {
                 s = d+k;
                 memcpy(buf+s->global_offset-start_p,s->buf,s->bytes);
             }
+            printf("---- rank %d, end put in data with new n: %zu  ----\n", rank, (nek_fh->io2parr).n);
         }
     }
     return 0;

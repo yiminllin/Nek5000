@@ -10,19 +10,10 @@ c-----------------------------------------------------------------------
       logical ifxyz, ifcur, ifbc
       integer idummy(100)
       integer re2_h
-      integer np_io
 
       common /nekmpi/ nidd,npp,nekcomm,nekgroup,nekreal
  
       etime0 = dnekclock_sync()
-
-!
-!     NOTE: When using .par file, p61 can be redefined only by 
-!           calling usrdat0() from the .usr file.  usrdat0() is 
-!           not native to the .usr file - you must add it.
-!
-      np_io = param(61)
-      np_io = min(np_io,np)  ! Do not use more than P ranks
 
                   ibc = 2
       if (ifflow) ibc = 1
@@ -44,17 +35,23 @@ c-----------------------------------------------------------------------
       call blank(cbc,3*size(cbc))
       call rzero(bc ,size(bc))
       
+      write(6,*) 'rank, fgslib_crystal_setup: ', nid
       call fgslib_crystal_setup(cr_re2,nekcomm,np)
-      call nek_file_open(nekcomm,re2fle,0,0,np_io,re2_h,ierr)
+      write(6,*) 'rank, nek_file_open: ', nid
+      call nek_file_open(nekcomm,re2fle,0,0,int(param(61)),re2_h,ierr)
       call err_chk(ierr,' Cannot open .re2 file!$')
+      write(6,*) 'rank, readp_re2_mesh: ', nid
       call readp_re2_mesh (re2_h,ifbswap,ifxyz)
+      write(6,*) 'rank, readp_re2_curve: ', nid
       call readp_re2_curve(re2_h,ifbswap,ifcur)
       do ifield = ibc,nfldt
+      write(6,*) 'rank, readp_re2_bc, ifield: ', nid, ifield
       call readp_re2_bc(cbc(1,1,ifield),bc(1,1,1,ifield),re2_h,
      &                  ifbswap,ifbc)
       if (nek_file_eof(re2_h,ierr).gt.0) goto 80
       if (ierr.gt.0)  goto 100
       enddo
+      write(6,*) 'rank, nek_file_close: ', nid
   80  call nek_file_close(re2_h,ierr)
       call fgslib_crystal_free(cr_re2)
 
@@ -72,7 +69,8 @@ c-----------------------------------------------------------------------
 
       include 'SIZE'
       include 'TOTAL'
-
+      
+      integer re2_h
       logical ifbswap
       logical ifread
 
@@ -101,6 +99,7 @@ c-----------------------------------------------------------------------
       ! read coordinates from file
       nwds4r  = nr*lrs4
       count_b = int(nwds4r,8)*4
+      write(6,*) '=== rank, re2_h, lre2off_b', nid, re2_h, lre2off_b
       call nek_file_read(re2_h,count_b,lre2off_b,bufr,ierr)
       re2off_b = re2off_b + nrg*4*lrs4
       if (ierr.gt.0) goto 100
@@ -146,7 +145,8 @@ c-----------------------------------------------------------------------
 
       include 'SIZE'
       include 'TOTAL'
-
+      
+      integer re2_h
       logical ifbswap
       logical ifread
 
@@ -596,4 +596,3 @@ c-----------------------------------------------------------------------
 
       return
       end
-c-----------------------------------------------------------------------
