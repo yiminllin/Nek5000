@@ -1,0 +1,20 @@
+tec.rea
+2                      spatial dimension
+7                      number of fields
+#
+#
+#
+#
+#========================================================
+#
+Box
+-10  -10                       nelx,nely,nelz for Box
+0   1.000  1.                     x0 x1 ratio 
+0   1.000  1.                     y0 y1 ratio 
+W  ,W  ,W  ,W  ,              bc's
+t  ,t  ,I  ,I  ,              bc's
+PEC,PEC,N  ,N  ,              bc's
+PEC,PEC,N  ,N  ,              bc's
+PEC,PEC,N  ,N  ,              bc's
+PEC,PEC,N  ,N  ,              bc's
+PEC,PEC,N  ,N  ,              bc's
