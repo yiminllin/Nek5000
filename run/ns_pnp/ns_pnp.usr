@@ -33,9 +33,8 @@ c-----------------------------------------------------------------------
       subroutine userchk
       include 'SIZE'  
       include 'TOTAL'
-      
-      parameter (npts=lx1*ly1*lz1*lelv)
-      parameter (lpts=lx1*ly1*lz1*lelv)
+
+      parameter (lpts1=lx1*ly1*lz1*lelt)
       parameter (lxzfl = lx1*lz1*2*ldim*lelt) ! length of face-points
       parameter (nxzfl = lx1*lz1*2*ldim*lelt) ! tot num of face-points
       parameter (nxyz = lx1*ly1)
@@ -43,13 +42,13 @@ c-----------------------------------------------------------------------
       parameter (nfaces = 4)
       
       common /driftv/
-     $    cn(npts,ldimt-1),
-     $    potent(npts),
-     $    rescn(npts,ldimt),
-     $    diff_n(npts,ldimt),
-     $    mu_n(npts,ldimt),
+     $    cn(lpts1,ldimt-1),
+     $    potent(lpts1),
+     $    rescn(lpts1,ldimt),
+     $    diff_n(lpts1,ldimt),
+     $    mu_n(lpts1,ldimt),
      $    zvalence(ldimt),
-     $    dmask(npts,ldimt)
+     $    dmask(lpts1,ldimt)
 
       common /cembcs/
      $    cemface(2*ldim*lx1*lz1*lelt),
@@ -63,22 +62,17 @@ c-----------------------------------------------------------------------
      $    cemface_rob(lxzfl,ldimt)
 
       real cn,potent,rescn,zvalence,mu_n,diff_n,dmask
-      real mask(npts),bc_flux(lxzfl,ldimt),mult(npts)
-      real tmp,wtmp(npts),rhs(npts),h1(npts),h2(npts)
-      real h1c(npts,ldimt),h2c(npts,ldimt)
-      real gradp(npts,3)
+      real mask(lpts1),bc_flux(lxzfl,ldimt),mult(lpts1)
+      real tmp,wtmp(lpts1),rhs(lpts1),h1(lpts1),h2(lpts1)
+      real h1c(lpts1,ldimt),h2c(lpts1,ldimt)
+      real gradp(lpts1,3)
       integer cemface,ncemface
       integer glo_ncemface_pec,glo_ncemface_nmn,glo_ncemface_rob
       integer ncemface_nmn,ncemface_pec,ncemface_rob
       integer cemface_nmn,cemface_pec,cemface_rob
 
-      real wa(lx1*ly1*lz1*lelt)
-      real wb(lx1*ly1*lz1*lelt)
-      real wc(lx1*ly1*lz1*lelt)
-      real wn(lx1*ly1*lz1*lelt)
-      real w_h1(lx1*ly1*lz1*lelt)
-      real w_h2(lx1*ly1*lz1*lelt)
-
+      real wa(lpts1),wb(lpts1),wc(lpts1),wn(lpts1)
+      real w_h1(lpts1),w_h2(lpts1)
 
       integer isd,imsh,maxit,ic
       real    tol
@@ -86,8 +80,10 @@ c-----------------------------------------------------------------------
       integer k,l,ef,js1,jf1,jskip1,js2,jf2,jskip2,j1,j2,p
       character CB*3
       integer iglsum
+      integer npts
 
-      
+      npts = lx1*ly1*lz1*nelt
+     
       ! ==============
       ! One time run
       ! ==============
@@ -96,8 +92,8 @@ c-----------------------------------------------------------------------
           ! ==============
           ! Initialize Var
           ! ==============
-          call rzero(cn,npts*ldimt)
-          call rzero(potent,npts)
+          call rzero(cn,lpts1*ldimt)
+          call rzero(potent,lpts1)
 
           ! z_k
           zvalence(1) =  1.0 ! Na
@@ -135,7 +131,7 @@ c-----------------------------------------------------------------------
           call dsset(lx1,ly1,lz1)
           k = 0
           l = 0
-          do e = 1,lelt
+          do e = 1,nelt
              do f = 1,nfaces
                 ef = eface(f)
                 js1 = skpdat(1,f)
@@ -238,14 +234,16 @@ c     pff order.
 
       endif
 
-      call rzero(rescn,npts*ldimt)
+      call rzero(rescn,lpts1*ldimt)
       call rzero(bc_flux,lxzfl*ldimt)
+
       
       ! ==========
       ! Debugging
       ! ==========
       write(6,*) 'Calling userchk'
       write(6,*) 'ldimt', ldimt
+      write(6,*) 'nelt', nelt 
       write(6,*) 'npts', npts
       write(6,*) 'istep', istep 
       write(6,*) 'dt', dt 
@@ -291,6 +289,7 @@ c     pff order.
          enddo
 
       endif
+
 
       ! =============
       ! solve poisson
@@ -421,10 +420,8 @@ c...  add u = u_0 + u_b (u_0= potent, u_b=potent_b if applicable)
         call dssum (wb,lx1,ly1,lz1)
         call col2 (wb,dmask(1,ic),npts)
  
-c       call cggo2(wa,wb,h1c(1,ic),h2c(1,ic)
-c    $            ,mult,dmask(1,ic),imsh,isd,npts,tol,maxit)
         call cggo2(wa,wb,h1c(1,ic),h2c(1,ic)
-     $            ,mult,dmask(1,1),imsh,isd,npts,tol,maxit)
+     $            ,mult,dmask(1,ic),imsh,isd,npts,tol,maxit)
 
 
         call add2 (cn(1,ic),wa,npts)
@@ -451,7 +448,6 @@ c    $            ,mult,dmask(1,ic),imsh,isd,npts,tol,maxit)
       call copy(t(1,1,1,1,3),cn(1,3),npts)
       call copy(t(1,1,1,1,4),cn(1,4),npts)
       call copy(t(1,1,1,1,5),potent,npts)
-
 
       return
       end
