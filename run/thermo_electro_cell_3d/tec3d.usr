@@ -18,8 +18,8 @@ c-----------------------------------------------------------------------
       parameter(g = 9.81)
       ffx  = 0.
       ffy  = 0.
-      ffy  = g*(temp-300.00)
       ffz  = 0.
+      ffz  = g*(temp-300.00)
 
       return
       end
@@ -62,7 +62,11 @@ c-----------------------------------------------------------------------
       uy=0.
       uz=0.
       if (x.le.0) temp=360.00
+      if (y.le.0) temp=360.00
+      if (z.le.0) temp=360.00
       if (x.ge.1) temp=300.00
+      if (y.ge.1) temp=300.00
+      if (z.ge.1) temp=300.00
       
       return
       end
@@ -114,8 +118,8 @@ c-----------------------------------------------------------------------
       parameter (lpts1=lx1*ly1*lz1*lelt)
       parameter (lxzfl = lx1*lz1*2*ldim*lelt) ! length of face-points
       parameter (nxzfl = lx1*lz1*2*ldim*lelt) ! tot num of face-points
-      parameter (nxyz = lx1*ly1)
-      parameter (nxzf = lx1)
+      parameter (nxyz = lx1*ly1*lz1)
+      parameter (nxzf = lx1*lz1)
       parameter (nfaces = 2*ldim)
       
       common /driftv/
