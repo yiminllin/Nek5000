@@ -1,0 +1,981 @@
+c-----------------------------------------------------------------------
+      subroutine uservp (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      if (ifield.eq.1) then
+        udiff  = 7.281E-4    ! dynamic viscosity
+        utrans = 1242.7      ! density
+      else if (ifield.eq.2) then
+        udiff  = 0.6         ! conductivity
+        utrans = 5203184.9   ! rho*cp
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userf  (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      parameter(g = -9.81)
+      parameter(rho_0 = 1094.6)
+      real tempe,density
+
+      tempe = t(ix,iy,iz,ieg,1)
+      density = 1063.0 + 0.546*tempe - 0.00147*tempe**2
+      ffx  = 0.
+      ffy = g*(rho_0-density)/rho_0
+c     ffy  = 0.0
+      ffz  = 0.
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userq  (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userbc (ix,iy,iz,iside,ieg)
+      include 'SIZE'
+      include 'TSTEP'
+      include 'INPUT'
+      include 'NEKUSE'
+
+      parameter(eps      = 1e-16)
+      
+      ux=0.
+      uy=0.
+      uz=0.
+      if (abs(x).lt.eps) temp=360.0
+      ! TODO: hardcoded 0.001
+      if (abs(x-0.001).lt.eps) temp=300.0 
+      
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine useric (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+c     ux=0.0
+      ux=0.0
+      uy=0.0
+      uz=0.0
+      ! temp=300.0
+c     temp = 300.0
+      temp = 360.0-60.0*x/0.001
+c     temp = 360.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat3
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      do iip=1,ldimt1
+         ifpsco(iip) = .true.
+      enddo
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat2
+      include 'SIZE'
+      include 'TOTAL'
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userchk
+
+      include 'SIZE'  
+      include 'TOTAL'
+      
+      parameter (lpts1=lx1*ly1*lz1*lelt)
+!TODO: hardcoded
+      parameter (lxzfl = lx1*lz1*2*ldim*lelt) ! length of face-points
+!TODO: hardcoded
+      parameter (nxzfl = lx1*lz1*2*ldim*lelt) ! tot num of face-points
+      parameter (nxyz = lx1*ly1)
+      parameter (nxzf = lx1)
+!TODO: hardcoded
+      parameter (nfaces = 4)
+!TODO: lpts1 vs npts
+      
+      common /driftv/
+     $    cn(lpts1,ldimt-2),
+     $    potent(lpts1),
+     $    rescn(lpts1,ldimt-2),
+     $    diff_n(lpts1,ldimt-2),
+     $    vmu_n(lpts1,ldimt-2),
+     $    zvalence(ldimt-2),
+     $    dmask(lpts1,ldimt-1),
+     $    q_vol(lx1,ly1,lz1,lelt)
+
+      common /cembcs/
+     $    cemface(2*ldim*lx1*lz1*lelt),
+     $    ncemface,
+     $    glo_ncemface_pec,glo_ncemface_nmn,glo_ncemface_rob,
+     $    ncemface_nmn(ldimt-1),
+     $    ncemface_pec(ldimt-1),
+     $    ncemface_rob(ldimt-1),
+     $    cemface_nmn(lxzfl,ldimt-1),
+     $    cemface_pec(lxzfl,ldimt-1),
+     $    cemface_rob(lxzfl,ldimt-1)
+
+      real cn,potent,rescn,zvalence,vmu_n,diff_n,dmask
+      real q_vol
+      real mask(lpts1),bc_flux(lxzfl,ldimt),bc_conv(lxzfl,ldimt)
+      real E_eq(lpts1)
+      real amult(lpts1)
+      real tmp,tmp2,wtmp(lpts1),rhs(lpts1),h1(lpts1),h2(lpts1)
+      real h1c(lpts1,ldimt),h2c(lpts1,ldimt)
+      real gradp(lpts1,3)
+      integer cemface,ncemface
+      integer glo_ncemface_pec,glo_ncemface_nmn,glo_ncemface_rob
+      integer ncemface_nmn,ncemface_pec,ncemface_rob
+      integer cemface_nmn,cemface_pec,cemface_rob
+      integer tmpi
+      real E_a,E_c,tmpa_1,tmpa_2,tmpc_1,tmpc_2
+      real vlhs_coeff,rhs_coeff
+
+      real wa(lpts1),wb(lpts1),wc(lpts1),wn(lpts1)
+      real w_h1(lpts1),w_h2(lpts1)
+      real tmpintg_a1(lpts1),tmpintg_a2(lpts1)
+      real tmpintg_c1(lpts1),tmpintg_c2(lpts1) ! temporary integrand
+
+      integer isd,imsh,maxit,ic
+      real    tol
+      real    dq,aq
+      integer  ifld,i,i0,i1,j,l1,l2,l3,e,f
+      integer k,l,ef,js1,jf1,jskip1,js2,jf2,jskip2,j1,j2,p
+      character CB*3
+      integer iglsum
+      integer npts
+      integer isrob
+      real Ca,Cc,vKa,vKc
+      real sareaa,sareac
+      real coi,cri,Eqi
+      real dina(lpts1),dinc(lpts1)
+      real etaa,etac,coeffa,coeffc
+      real gradT(lpts1,3)
+      real gradcn(lpts1,3,ldimt-2)
+      real Ti,cni
+      real wq(lx1)
+      ! TODO: hardcoded
+      real aream(lx1*nfaces*lelt)
+      real unxm(lx1*nfaces*lelt)
+      real unym(lx1*nfaces*lelt)
+      
+      parameter(Fcst     = 96485.0)
+      parameter(Rcst     = 8.314)
+c      parameter(Dcst     = 1.1611E-11)
+      parameter(Dcst     = 1.1611E-9)
+      parameter(Qcst     = 8000.0)
+      parameter(vncst    = 1.0)
+      parameter(vkzero   = 0.6E-5)
+      parameter(Tzero    = 273.15)
+      parameter(Exa      = 14.644)
+      parameter(thetacst = 0.5)
+      parameter(Ta       = 360)
+      parameter(Tc       = 300)
+      parameter(Vcell    = 0.05)
+      parameter(eps      = 1e-16)
+
+      npts = lx1*ly1*lz1*nelt
+      Ca   = vncst*Fcst*vkzero*exp(Exa/Rcst*(1./Tzero - 1./Ta))
+      Cc   = vncst*Fcst*vkzero*exp(Exa/Rcst*(1./Tzero - 1./Tc))
+      vKa   = vncst*Fcst*thetacst/Rcst/Ta
+      vKc   = vncst*Fcst*thetacst/Rcst/Tc
+
+      ! TODO: HARDCODE corner
+      do i = 1,5
+        do j = 1,5
+          vx(lx1-i+1,lx1-j+1,1,20*20)   = 0.0
+          vx(lx1-i+1,j,      1,20)      = 0.0
+          vx(i,      j,      1,1)       = 0.0
+          vx(i,      lx1-j+1,1,19*20+1) = 0.0
+          vy(lx1-i+1,lx1-j+1,1,20*20)   = 0.0
+          vy(lx1-i+1,j,      1,20)      = 0.0
+          vy(i,      j,      1,1)       = 0.0
+          vy(i,      lx1-j+1,1,19*20+1) = 0.0
+        enddo
+      enddo
+
+      ! ==============
+      ! One time run
+      ! ==============
+      if (istep.eq.0) then
+
+          ! ==============
+          ! Initialize Var
+          ! ==============
+          call rzero(cn,lpts1*(ldimt-2))
+          call rzero(potent,lpts1)
+
+          ! z_k
+          zvalence(1) = -4.0 ! oxidized
+          zvalence(2) = -3.0 ! reduced
+          zvalence(3) =  1.0 ! counter
+
+          ! =================
+          ! Initial Condition
+          ! =================
+           do i = 1,npts
+            cn(i,1) = 400.0  ! oxidized
+            cn(i,2) = 400.0  ! reduced
+            cn(i,3) = 2800.0 ! counter
+            potent(i) = 0.0 ! phi
+          enddo
+ 
+          ! =================
+          ! Setup face cemface_ptr
+          ! =================
+          call dsset(lx1,ly1,lz1)
+          k = 0
+          l = 0
+          do e = 1,nelt
+             do f = 1,nfaces
+                ef = eface(f)
+                js1 = skpdat(1,f)
+                jf1 = skpdat(2,f)
+                jskip1 = skpdat(3,f)
+                js2 = skpdat(4,f)
+                jf2 = skpdat(5,f)
+                jskip2 = skpdat(6,f)
+
+                i = 0
+                do j2 = js2,jf2,jskip2
+                   do j1 = js1,jf1,jskip1
+                      i = i+1
+                      l = l+1
+c     Face numbering.
+                      k = i+nxzf*(ef-1)+nxzf*nfaces*(e-1)
+c     Global number; `cemface` gets Ed's numbering at faces following
+c     pff order.
+                      cemface(k) = j1+nx1*(j2-1)+nxyz*(e-1)
+                   enddo
+                enddo
+                ncemface = l
+             enddo
+          enddo
+
+          if (nid_io.eq.0) then
+             write(6,*) 'done: cem_set_fc_ptr, ncemface= ',ncemface
+          endif
+
+          ! ====================
+          ! cemface_pec nmn 
+          ! ====================
+          i0= 1
+          i1= ldimt-1
+          do ifld= i0,i1
+            l1=0
+            l2=0
+            l3=0
+            do e= 1,nelt
+              do f= 1,nfaces
+                do j= 1,nxzf
+                  CB= CBC(f,e,ifld+2)
+                  i =(e-1)*nfaces*nxzf+(f-1)*nxzf+j !global face numbering
+                  if  (CB.eq.'N  ') then
+                      l1= l1+1
+                      cemface_nmn(l1,ifld)= i
+                  elseif  (CB.eq.'PEC') then
+                      l2= l2+1
+                      cemface_pec(l2,ifld)= i
+                  elseif  (CB.eq.'R  ') then
+                      l3= l3+1
+                      cemface_rob(l3,ifld)= i
+                  endif
+                enddo
+              enddo
+            enddo
+            ncemface_nmn(ifld)  = l1
+            ncemface_pec(ifld)  = l2
+            ncemface_rob(ifld)  = l3
+          enddo
+
+          do ifld=i0,i1    
+            glo_ncemface_pec= iglsum(ncemface_pec(ifld),1)
+            glo_ncemface_nmn= iglsum(ncemface_nmn(ifld),1)
+            glo_ncemface_rob= iglsum(ncemface_rob(ifld),1)
+            if (nid.eq.0) then
+             write(6,*) 'tot#pts: BCs ncemface_pec',ifld,glo_ncemface_pec
+             write(6,*) 'tot#pts: BCs ncemface_nmn',ifld,glo_ncemface_nmn
+             write(6,*) 'tot#pts: BCs ncemface_rob',ifld,glo_ncemface_rob
+            endif
+          enddo
+
+          ! ============
+          ! Setup dmask
+          ! ============
+          do i = 1,ldimt-1
+            call rone(dmask(1,i),npts)
+            do e=1,nelt
+              do f=1,nfaces
+                CB =CBC(f,e,i+1)
+                if (CB.eq.'PEC') then
+                    call facev (dmask(1,i),e,f,0.0,lx1,ly1,lz1)
+                endif
+              enddo
+            enddo
+          enddo
+
+          ! ============
+          ! Setup multiplicity 
+          ! ============
+          call rone    (amult,npts)
+          call dssum   (amult,lx1,ly1,lz1)
+          call invcol1 (amult,npts)
+
+          ! TODO: set area and normal on Robin BC??
+          call rzero(aream,lx1*nfaces*lelt)
+          call rzero(unxm,lx1*nfaces*lelt)
+          call rzero(unym,lx1*nfaces*lelt)
+          call rzero(wq,lx1)
+
+          do i = 1,lx1
+            wq(i) = area(i,1,1,1)
+          enddo
+
+          ic = 1
+          if (ncemface_rob(ic).gt.0) then
+            do i = 1,ncemface_rob(ic)
+              j = cemface_rob(i,ic)
+              k = cemface(j)
+
+              xx = xm1(k,1,1,1)
+              if (abs(xx).lt.eps) then
+                tmpi = mod(j-1,lx1)+1
+                aream(j) = wq(tmpi)
+                unxm(j)  = -1.0
+                unym(j)  = 0.0
+              endif
+              if (abs(xx-0.001).lt.eps) then
+                tmpi = mod(j-1,lx1)+1
+                aream(j) = wq(tmpi)
+                unxm(j)  = 1.0
+                unym(j)  = 0.0
+              endif
+            enddo
+          endif
+
+          if (ncemface_nmn(ic).gt.0) then
+            do i = 1,ncemface_nmn(ic)
+              j = cemface_nmn(i,ic)
+              k = cemface(j)
+
+              xx = ym1(k,1,1,1)
+              if (abs(xx).lt.eps) then
+                tmpi = mod(j-1,lx1)+1
+                aream(j) = wq(tmpi)
+                unxm(j)  = 0.0
+                unym(j)  = -1.0
+              endif
+              if (abs(xx-0.001).lt.eps) then
+                tmpi = mod(j-1,lx1)+1
+                aream(j) = wq(tmpi)
+                unxm(j)  = 0.0
+                unym(j)  = 1.0
+              endif
+            enddo
+          endif
+      endif
+
+      ! TODO: only start solve at step 1?
+      if (istep.ne.0) then
+
+      call rzero(rescn,lpts1*ldimt)
+      call rzero(bc_flux,lxzfl*ldimt)
+      call rzero(bc_conv,lxzfl*ldimt)
+
+      ! ==========
+      ! Debugging
+      ! ==========
+      write(6,*) 'Calling userchk'
+      write(6,*) 'ldimt', ldimt
+      write(6,*) 'nelt', nelt
+      write(6,*) 'npts', npts
+      write(6,*) 'istep', istep 
+      write(6,*) 'dt', dt 
+      write(6,*) 'ifxyo,ifvo,ifpo,ifto', ifxyo,ifvo,ifpo,ifto
+      do iip=1,ldimt1
+         write(6,*) 'ifpsco(iip), iip', iip, ifpsco(iip)
+      enddo
+
+      ! ===================
+      ! Set up vmu_n = u_n F u_n = D_i/R/T
+      ! ===================
+      do i= 1,npts 
+         vmu_n(i,1) = Fcst*Dcst/Rcst/t(i,1,1,1,1)
+         vmu_n(i,2) = Fcst*Dcst/Rcst/t(i,1,1,1,1) 
+         vmu_n(i,3) = Fcst*Dcst/Rcst/t(i,1,1,1,1)
+      enddo
+
+      ! ===================
+      ! Calculate currents
+      ! ===================
+      ! Step 1: calculate E^eq
+      do i=1,npts
+          Ti  = t(i,1,1,1,1)
+          coi = cn(i,1)
+          cri = cn(i,2)
+          E_eq(i) = Rcst*Ti*log(coi/cri)/Fcst/vncst
+      enddo
+
+      ! Step 2: Solve for E_a, E_c
+      E_a = 0.0
+      tmpa_1 = 0.0
+      tmpa_2 = 0.0
+      tmpc_1 = 0.0
+      tmpc_2 = 0.0
+      vlhs_coeff = 0.0
+      rhs_coeff = 0.0
+      sareaa = 0.0
+      sareac = 0.0
+      call rzero(tmpintg_a1,npts)
+      call rzero(tmpintg_a2,npts)
+      call rzero(tmpintg_c1,npts)
+      call rzero(tmpintg_c2,npts)
+
+      ! (tmpa_1+tmpc_1)E_a = tmpa_2+tmpc_2
+      ! vlhs_coeff E_a = rhs_coeff
+      do i=1,npts
+        coi = cn(i,1)
+        cri = cn(i,2)
+        Eqi = E_eq(i)
+        tmpintg_a1(i) = Ca*vKa*(coi+cri)
+        tmpintg_c1(i) = Cc*vKc*(coi+cri)
+        tmpintg_a2(i) = Ca*(coi-cri+vKa*Eqi*(coi+cri))
+        tmpintg_c2(i) = Cc*(coi-cri-vKc*(Vcell-Eqi)*(coi+cri))
+      enddo
+      do e=1,lelt
+        do f=1,nfaces
+          ! TODO: Assume every nodes on a face have the same BC
+          CB = CBC(f,e,3)
+          if (CB.eq.'R  ') then
+            j = (e-1)*nfaces*nxzf+(f-1)*nxzf+1
+            i0 = cemface(j)
+            xx = xm1(i0,1,1,1)
+            if (abs(xx).lt.eps) then         ! if current face on anode
+              call surface_int(tmpa_1,sarea,tmpintg_a1,e,f)        
+              call surface_int(tmpa_2,sarea,tmpintg_a2,e,f)        
+            elseif (abs(xx-0.001).lt.eps) then   ! if current face on cathode
+              call surface_int(tmpc_1,sarec,tmpintg_c1,e,f)        
+              call surface_int(tmpc_2,sarec,tmpintg_c2,e,f)        
+            endif
+          endif
+        enddo
+      enddo
+      E_a = (tmpa_2+tmpc_2)/(tmpa_1+tmpc_1)
+      E_c = E_a + Vcell
+
+      ! Step 3: Calculate i \cdot n
+      coeffa = vncst*Fcst*vkzero*exp(Exa/Rcst*(1.0/Tzero-1.0/Ta))
+      coeffc = vncst*Fcst*vkzero*exp(Exa/Rcst*(1.0/Tzero-1.0/Tc))
+      do i=1,lpts1
+      ! TODO: precompute
+        coi = cn(i,1)
+        cri = cn(i,2)
+        Eqi = E_eq(i)
+        etaa = E_a-Eqi
+        etac = E_c-Eqi
+        dina(i)=coeffa*(coi*(1-vncst*Fcst*(1.0-thetacst)
+     &                       *etaa/Rcst/Ta)
+     &                 -cri*(1+vncst*Fcst*thetacst
+     &                       *etaa/Rcst/Ta))
+        dinc(i)=coeffc*(coi*(1-vncst*Fcst*(1.0-thetacst)
+     &                       *etac/Rcst/Tc)
+     &                 -cri*(1+vncst*Fcst*thetacst
+     &                       *etac/Rcst/Tc))
+      enddo
+
+      ! ====================
+      ! Enforce Robin BC
+      ! ====================
+      call opgrad(gradT(1,1),gradT(1,2),gradT(1,3),t(1,1,1,1,1))
+      if (ncemface_rob(1).ge.1)  then ! first field oxidized
+         do i=1,ncemface_rob(1)
+            j = cemface_rob(i,1)
+            i0 = cemface(j)
+            xx = xm1(i0,1,1,1)
+
+            tmp = gradT(i0,1)*unxm(j)+gradT(i0,2)*unym(j)
+            Ti  = t(i0,1,1,1,1)
+            bc_conv(j,1) = Qcst/Rcst/Ti/Ti*tmp
+            if (abs(xx).lt.eps) then
+              bc_flux(j,1) = -dina(i0)/zvalence(1)/Fcst/Dcst
+            endif
+         enddo
+      endif
+
+      if (ncemface_rob(2).ge.1)  then ! second field reduced 
+         do i=1,ncemface_rob(2)
+            j = cemface_rob(i,2)
+            i0 = cemface(j)
+            xx = xm1(i0,1,1,1)
+
+            tmp = gradT(i0,1)*unxm(j)+gradT(i0,2)*unym(j)
+            Ti  = t(i0,1,1,1,1)
+            bc_conv(j,2) = Qcst/Rcst/Ti/Ti*tmp
+            if (abs(xx-0.001).lt.eps) then
+              bc_flux(j,2) = -dinc(i0)/zvalence(2)/Fcst/Dcst
+            endif
+         enddo
+      endif
+
+      if (ncemface_rob(3).ge.1)  then ! third field counter 
+         do i=1,ncemface_rob(3)
+            j = cemface_rob(i,3)
+            i0 = cemface(j)
+            xx = xm1(i0,1,1,1)
+            tmp = gradT(i0,1)*unxm(j)+gradT(i0,2)*unym(j)
+            Ti  = t(i0,1,1,1,1)
+            bc_conv(j,3) = Qcst/Rcst/Ti/Ti*tmp
+            bc_flux(j,3) = 0.0
+         enddo
+      endif
+
+      ! Fourth field potential has homogeneous Neumann
+
+      ! =============
+      ! solve poisson
+      ! =============
+c...  set rhs = -\sum z_k D_k \Delta c_k (weak form)
+      call rzero(w_h2,npts)
+      call rzero(rhs,npts)
+      call rzero(wn,npts)
+      call rone(wc,npts)
+      do ic = 1,ldimt-2
+        call cmult2(w_h1,wc,-1.0*zvalence(ic)*Dcst,npts)
+        call axhelm(wn,cn(1,ic),w_h1,w_h2,1,1)
+        call add2(rhs,wn,npts)
+      enddo
+      call rzero(wc,npts)
+
+c...  set rhs = -\sum z_k D_k \Delta c_k - \sum Q_i/(R*T^2)*D_i*c_i \Delta T (weak form)
+      do ic = 1,ldimt-2
+        call cmult2(w_h1,cn(1,ic),-Dcst*Qcst/Rcst,npts)
+        call invcol2(w_h1,t,npts)
+        call invcol2(w_h1,t,npts)
+        call axhelm(wn,t,w_h1,w_h2,1,1)
+        call add2(rhs,wn,npts)
+      enddo
+
+c...  set up surface integral terms \sum z_i D_i \pd{c_i}{n}
+      call rzero(wa,npts)
+      do ic = 1,ldimt-2
+        call opgrad(gradcn(1,1,ic),gradcn(1,2,ic),
+     &              gradcn(1,3,ic),cn(1,ic))
+      enddo
+      do i = 1,ncemface_nmn(4) ! TODO: hardcoded 4
+        j = cemface_nmn(i,4)
+        k = cemface(j)
+        Ti = t(k,1,1,1,1)
+        do ic = 1,ldimt-2
+          cni = cn(k,ic)
+          tmp = gradcn(k,1,ic)*unxm(j)+gradcn(k,2,ic)*unym(j)
+          tmp2 = gradT(k,1)*unxm(j)+gradT(k,2)*unym(j)
+          wa(k) = wa(k)+zvalence(ic)*Dcst*tmp*aream(j)
+     &                 +zvalence(ic)*Qcst/Rcst/Ti/Ti
+     &                              *Dcst*cni*tmp2*aream(j)
+        enddo
+      enddo
+      call add2(rhs,wa,npts)
+
+c...  setup helmholtz: [h1 A + h2 B] u = rhs where u = u_0+u_b
+      call rzero(h1,npts)
+      call copy (mask,dmask(1,4),npts)  ! TODO: hardcoded 4
+
+c       h1 = \sum z_k^2 u_k F c_k
+      call rzero(wn,npts)
+      call rzero (h1,npts)
+      do ic = 1,ldimt-2
+        call col3(wn,vmu_n(1,ic),cn(1,ic),npts) 
+        call cmult2(wn,wn,zvalence(ic)*zvalence(ic),npts)
+        call add2(h1,wn,npts) 
+      enddo
+      call rzero (h2,npts)
+
+      isd = 1
+      imsh = 1
+      maxit = 5000
+      tol = param(22)
+
+c...  setup helmholtz: [h1 A + h2 B] u_0 = rhs - h1 A u_b
+c     call bcneusc (wa,npts,5,-1)
+      call rzero(wa,npts)
+      if (ncemface_rob(4).gt.0) then
+        do i = 1,ncemface_rob(4)
+          j = cemface_rob(i,4)
+          k = cemface(j)
+          wa(k) = wa(k) + bc_conv(j,4)*aream(j)/bm1(k,1,1,1)
+        enddo
+      endif
+      
+      call col2 (wa,h1,npts)
+      call add2 (h2,wa,npts)
+      call axhelm (wa,potent,h1,h2,1,1) 
+      call sub3 (wb,rhs,wa,npts) ! wb = rhs-wa       
+c     call bcneusc (wa,npts,5,1)    
+      call rzero(wa,npts)
+      if (ncemface_rob(4).gt.0) then
+        do i = 1,ncemface_rob(4)
+          j = cemface_rob(i,4)
+          k = cemface(j)
+          wa(k) = wa(k) + bc_flux(j,4)*aream(j)
+        enddo
+      endif
+      if (ncemface_nmn(4).gt.0) then
+        do i = 1,ncemface_nmn(4)
+          j = cemface_nmn(i,4)
+          k = cemface(j)
+          wa(k) = wa(k) + bc_flux(j,4)*aream(j)
+        enddo
+      endif
+
+      call col2 (wa,h1,npts)
+      call add2 (wb,wa,npts) 
+c...  solve u_0 after assemble and mask for boundary on right hand side  
+      call dssum (wb,lx1,ly1,lz1)
+      call col2 (wb,mask,npts)
+      write(6,*) '==wb', wb(1),wb(2),wb(3)
+      call cggo2 (wa,wb,h1,h2,amult,mask,imsh,isd,npts,tol,maxit)
+
+      write(6,*) '==wa', wa(1),wa(2),wa(3)
+      
+c...  add u = u_0 + u_b (u_0= potent, u_b=potent_b if applicable)  
+      call add2(potent,wa,npts)
+
+      call opgrad (gradp(1,1),gradp(1,2),gradp(1,3),potent)
+
+      call chsign(gradp(1,1),npts)
+      call chsign(gradp(1,2),npts)
+      call chsign(gradp(1,3),npts)
+
+      ! ===============
+      ! solve transport
+      ! ===============
+      call rone(wc,npts) ! TODO: fix all wc hardcode
+      do ic = 1,ldimt-2   ! loop through species
+        call cmult2(h1c(1,ic),wc,Dcst*dt,npts) 
+        call rone(h2c(1,ic),npts)
+      enddo
+      call rzero(wc,npts)
+
+      do ic = 1,ldimt-2
+        !!! RHS
+        ! rescn = c_i - dt*(z_i u_i F c_i \Delta \phi) (weak form)
+        call rzero(w_h2,npts)
+        call col3(wn,cn(1,ic),bm1,npts)
+        call add2s1(rescn(1,ic),wn,dt,npts)
+        call col3(w_h1,cn(1,ic),vmu_n(1,ic),npts)
+        call axhelm(wn,potent,w_h1,w_h2,1,1)
+        call add2s2(rescn(1,ic),wn,-zvalence(ic)*dt,npts)
+
+        ! rescn = rescn - dt*(u \cdot \nabla c_i)
+        ! gradp = - \nabla \phi
+!TODO: to 3D
+        call vdot2(wn,gradcn(1,1,ic),gradcn(1,2,ic),
+     &             vx(1,1,1,1),vy(1,1,1,1),npts)
+        call add2s2(rescn(1,ic),wn,-1.0*dt,npts)
+        
+        ! rescn = rescn - dt*(Q_i/R/T^2*D_i*c_i \Delta T)
+        call rzero(w_h2,npts)
+        call cmult2(w_h1,cn(1,ic),Dcst,npts)
+        call invcol2(w_h1,t(1,1,1,1,1),npts)
+        call invcol2(w_h1,t(1,1,1,1,1),npts)
+        call axhelm(wn,t(1,1,1,1,1),w_h1,w_h2,1,1)
+        call add2s2(rescn(1,ic),wn,-Qcst/Rcst*dt,npts)
+
+        ! rescn = rescn + surf integral
+        !       = rescn + surf( dt*Q_i/R/T/T*D_i*c_i \pd{T}{n}
+        !                      +dt*z_iu_iFc_i\pd{\phi}{n})
+        call rzero(wa,npts)
+        do i = 1,ncemface_nmn(ic)
+          j = cemface_nmn(i,ic)
+          k = cemface(j)
+          Ti = t(k,1,1,1,1)
+          cni = cn(k,ic)
+          tmp = gradT(k,1)*unxm(j)+gradT(k,2)*unym(j)
+          tmp2 = gradp(k,1)*unxm(j)+gradp(k,2)*unym(j)
+          wa(k) = wa(k) - dt*zvalence(ic)*vmu_n(k,ic)
+     &                   *cni*tmp2*aream(j)
+          wa(k) = wa(k) + dt*Qcst/Rcst/Ti/Ti*Dcst
+     &                   *cni*tmp*aream(j)
+        enddo
+        do i = 1,ncemface_rob(ic)
+          j = cemface_rob(i,ic)
+          k = cemface(j)
+          Ti = t(k,1,1,1,1)
+          cni = cn(k,ic)
+          tmp = gradT(k,1)*unxm(j)+gradT(k,2)*unym(j)
+          tmp2 = gradp(k,1)*unxm(j)+gradp(k,2)*unym(j)
+          wa(k) = wa(k) - dt*zvalence(ic)*vmu_n(k,ic)
+     &                   *cni*tmp2*aream(j)
+          wa(k) = wa(k) + dt*Qcst/Rcst/Ti/Ti*Dcst
+     &                   *cni*tmp*aream(j)
+        enddo
+        call add2(rescn(1,ic),wa,npts)
+        
+        !!! LHS
+c       call bcneusc (wa,npts,ic+1,-1)
+        call rzero(wa,npts)
+        if (ncemface_rob(ic).gt.0) then
+          do i = 1,ncemface_rob(ic)
+            j = cemface_rob(i,ic)
+            k = cemface(j)
+            wa(k) = wa(k) + bc_conv(j,ic)*aream(j)/bm1(k,1,1,1)
+          enddo
+        endif
+
+        call col2 (wa,h1c(1,ic),npts)
+        call add2 (h2c(1,ic),wa,npts)
+        call axhelm (wa,cn(1,ic),h1c(1,ic),h2c(1,ic),1,1)
+        call sub3 (wb,rescn(1,ic),wa,npts) 
+c       call bcneusc (wa,npts,ic+1,1)
+        call rzero(wa,lpts1)
+        if (ncemface_rob(ic).gt.0) then
+          do i = 1,ncemface_rob(ic)
+            j = cemface_rob(i,ic)
+            k = cemface(j)
+
+            xx = xm1(k,1,1,1)
+            wa(k) = wa(k) + bc_flux(j,ic)*aream(j)
+          enddo
+        endif
+        if (ncemface_nmn(ic).gt.0) then
+          do i = 1,ncemface_nmn(ic)
+            j = cemface_nmn(i,ic)
+            k = cemface(j)
+            wa(k) = wa(k) + bc_flux(j,ic)*aream(j)
+          enddo
+        endif
+        call col2 (wa,h1c(1,ic),npts) 
+        call add2 (wb,wa,npts) 
+          
+        isd = 1
+        imsh = 1
+        maxit = 5000
+        tol = param(22)
+
+        call dssum (wb,lx1,ly1,lz1)
+        call col2 (wb,dmask(1,ic),npts)
+        call cggo2(wa,wb,h1c(1,ic),h2c(1,ic)
+     $            ,amult,dmask(1,ic),imsh,isd,npts,tol,maxit)
+        call add2 (cn(1,ic),wa,npts)
+      enddo
+
+      ! Correction step for neutrality... only a hard fix
+      call rzero(wa,npts)
+      do ic = 1,ldimt-3
+        call add2s2(wa,cn(1,ic),zvalence(ic),npts)
+      enddo
+      ! TODO: hardcoded
+      call cmult2(cn(1,3),wa,-1.0/zvalence(3),npts) 
+      call rzero(wa,npts)
+
+      call copy(t(1,1,1,1,2),cn(1,1),npts)
+      call copy(t(1,1,1,1,3),cn(1,2),npts)
+      call copy(t(1,1,1,1,4),cn(1,3),npts)
+      call copy(t(1,1,1,1,5),potent,npts)
+      
+      ! q_vol = kappa_s \Delta T + \sum D_i Q_i \Delta c_i
+      ! Assume kappa_s \Delta T included in previous calculations
+      call rzero(q_vol,lpts1)
+      do ic = 1,ldimt-2
+        call rzero(w_h2,lpts1)
+        call rone(w_h1,lpts1)
+        call cmult2(w_h1,w_h1,Dcst*Qcst,lpts1)
+        call axhelm(wn,cn(1,ic),w_h1,w_h2,1,1) ! TODO: incorrect...
+        call add2(q_vol,wn,npts)
+      enddo
+
+      endif ! istep
+
+      return
+      end
+
+
+
+
+c=======================================================================
+      subroutine cggo2(x,f,h1,h2,amult,mask,imsh,isd,n,tol,niter)
+c=======================================================================
+      include 'SIZE'
+      include 'GEOM'
+      include 'MASS'
+      include 'TSTEP'
+      include 'INPUT'
+      include 'FDMH1'
+
+      parameter (lpts=lx1*ly1*lz1*lelv)
+      common  /srcuz/ d(lpts),r(lpts),w(lpts),p(lpts),z(lpts)
+      common  /srccg/ scalar(2)
+      real     tol,r,w,p,z,scalar
+      logical ifio
+
+c     Solve Ax=f where A is SPD and is invoked by the routine ax()
+c
+c     Output:  x - vector of length n
+c
+c     Input:   f - vector of length n
+c
+c     Work arrays:   r,w,p,z  - vectors of length n
+c
+c     User-provided routine ax(w,z,n) returns  w := Az,
+c
+c     User-provided routine solveM(z,r,n) ) returns  z := M^-1 r,
+c
+c     User-provided array wght() is used to scale inner-products
+c     of the form (p,z) = p'*wght*z
+c
+      integer  n,niter,imsh,isd
+      real     eps, rhsnorm
+      real     x(n),f(n),h1(n),h2(n),amult(n),mask(n)
+      real     bminv(n)
+      logical  ifmcor
+!$ACC DATA CREATE(r,w,p,z,d)
+      call rzero  (r,n)      ! init
+      call rzero  (w,n)      ! init
+      call rzero  (p,n)      ! init
+      call rzero  (z,n)      ! init
+
+c     set machine tolerances
+C     one = 1.
+C     eps = 1.e-20
+C     rhsnorm = sqrt(glsc2(f,f,n))
+C     if (one+eps .eq. one) eps = 1.e-14
+C     if (one+eps .eq. one) eps = 1.e-7
+C     eps= eps*rhsnorm
+
+
+c     if (nid.eq.0) write(6,*) 'start: cggo2'
+c     if (nid.eq.0) write(6,5) tol,n,niter
+c  5  format(' tol=',e15.7,', n=',i6, ', iter=',i6)
+
+      pap = 0.0
+      vol = volvm1
+
+      call rone   (bminv,n)
+      call invcol2(bminv,bm1,n)
+
+      kfldfdm=1
+
+      if (param(23).eq.1) call setprec(D,h1,h2,imsh,isd)       !IFFDM=true
+!FIXME - MJO - 5/9/15 - Skipped set_fdm_prec_h1b for acc
+      if (param(23).eq.2) call set_fdm_prec_h1b(d,h1,h2,nel)
+
+      call copy   (r,f,n) ! f=b-Ax_0
+      call rzero  (x,n)
+      call rzero  (p,n)
+
+c...  check non-trivial null-space: "ifmcor := if mean correction is true"
+c...  choose the non-trivial solution that has zero mean; this is equivalent to
+c...  orthogonalization to one vector (1,....,1) of length n
+c...
+c...  eg), A= [ 2 0 ]  u=[1/2,0] or u[1/2,10] for Au=0
+c...          [ 0 0 ]
+c...       Our routine will give result of u=[1/2,1/2]
+
+      ifmcor= .false.
+      h2max = glmax(h2  ,n)
+      skmin = glmin(mask,n)                ! check dirichlet boundary
+      if ((skmin.gt.0).and.(h2max.eq.0)) ifmcor = .true.  ! no dirichlet, no h2 term
+
+      if (ifmcor) then
+          smean = -1./glsum(bm1,n)         ! glsum(bmn)= volume integration    
+          rmean = smean*glsc2(r,amult,n)    !
+          call copy  (x,bm1,n)
+          call dssum (x,nx1,ny1,nz1)
+          call add2s2(r,x,rmean,n)         ! r = r - rmean*x
+          call rzero (x,n)
+      endif
+
+      rtz1= 1.0
+      do iter=1,niter
+
+         if     (param(23).eq.1) then
+             call col3(z,r,d,n)
+         elseif (param(23).eq.2) then
+!FIXME - MJO - 5/9/15 - Skipped fdm_h1b for acc
+             call fdm_h1(z,r,d,mask,amult,nel,ktype(1,1,kfldfdm),w)
+         else
+             call copy(z,r,n)
+         endif
+
+         if (ifmcor) then
+             rmean = smean*glsc2(z,bm1,n)  ! inner product could give different numbers on different # cores.   
+             call cadd(z,rmean,n)          ! if do "sort" and then "glsc2" might give the same value all the time.
+         endif
+
+         rtz2      = rtz1
+         scalar(1) = vlsc3 (r,amult,z,n)    ! tmp=tmp+r(i)*mult(i)*z(i)                      
+         scalar(2) = vlsc32(r,amult,bminv,n)! tmp=tmp+r(i)*mult(i)*r(i)/bm1(i)
+         call gop(scalar,w,'+  ',2)
+
+         rtz1 = scalar(1)
+         rbn2 = sqrt(scalar(2)/vol)        ! rbn2= norm(r,2)
+
+         if (iter.eq.1) rbn0 = rbn2
+
+         if ((nid.eq.0).and.(istep.le.5))
+     $           write(6,1001) iter-1,ifmcor,rbn2,rbn0,tol,istep
+         if (rbn2.le.tol) go to 1000
+
+         beta = rtz1/rtz2
+
+         if  (iter.eq.1) beta=0.0
+         call add2s1  (p,z,beta,n)         ! p = z + beta*p
+         call axhelm (w,p,h1,h2,imsh,isd) ! w = Ap
+!         call axhelm2 (w,p,h1,h2,imsh,isd) ! w = Ap
+         call dssum   (w,nx1,ny1,nz1)      !
+         call col2    (w,mask,n)           !
+
+         pap  = glsc3 (w,amult,p,n)        ! pap  = (p^T)Ap
+         alpha= rtz1/pap                  ! alpha= (r^T r)/pap
+         alphm= -alpha
+
+         call add2s2 (x,p,alpha,n)         ! x = x + alpha*p
+         call add2s2 (r,w,alphm,n)         ! r = r + alphm*(Ap)
+
+      enddo
+ 1000 continue
+!$ACC END DATA
+      if (nid.eq.0) then
+         if (param(23).eq.1) then
+             if ((mod(istep,iocomm).eq.0).or.(istep.le.2))
+     $       write(6,1003) istep,iter,ifmcor,rbn2,rbn0,tol
+         else
+             if ((mod(istep,iocomm).eq.0).or.(istep.le.2))
+     $       write(6,1002) istep,iter,ifmcor,rbn2,rbn0,tol
+         endif
+      endif
+
+ 1001 format(i5,l4,2x,1p3e12.4,i8,' cggo2')
+ 1002 format(' ',i9,' cggo2   : iteration#',i5,l4,2x,1p3e12.4)
+ 1003 format(' ',i9,' cggo2   : iteration#',i5,l4,2x,1p3e12.4,
+     $       '    | diagonal = T ')
+
+      return
+      end
+
+
