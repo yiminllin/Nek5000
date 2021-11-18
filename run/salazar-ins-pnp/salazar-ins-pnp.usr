@@ -20,11 +20,14 @@ c-----------------------------------------------------------------------
       include 'TOTAL'
       include 'NEKUSE'
 
-      parameter(g = -9.81)
+      parameter(g = 9.81)
       parameter(rho_0 = 1094.6)
       real tempe,density
 
-      tempe = t(ix,iy,iz,ieg,1)
+      integer e
+      e = gllel(ieg)
+
+      tempe = t(ix,iy,iz,e,1)
       density = 1063.0 + 0.546*tempe - 0.00147*tempe**2
       ffx  = 0.
       ffy = g*(rho_0-density)/rho_0
@@ -65,14 +68,10 @@ c-----------------------------------------------------------------------
       include 'TOTAL'
       include 'NEKUSE'
 
-c     ux=0.0
       ux=0.0
       uy=0.0
       uz=0.0
-      ! temp=300.0
-c     temp = 300.0
       temp = 360.0-60.0*x/0.001
-c     temp = 360.0
 
       return
       end
@@ -107,7 +106,7 @@ c-----------------------------------------------------------------------
 
       include 'SIZE'  
       include 'TOTAL'
-      
+
       parameter (lpts1=lx1*ly1*lz1*lelt)
 !TODO: hardcoded
       parameter (lxzfl = lx1*lz1*2*ldim*lelt) ! length of face-points
@@ -118,6 +117,11 @@ c-----------------------------------------------------------------------
 !TODO: hardcoded
       parameter (nfaces = 4)
 !TODO: lpts1 vs npts
+c     parameter (nbli = 1)
+c     parameter (nbri = 20)
+c     parameter (ntli = 381)
+c     parameter (ntri = 400)
+c     parameter (ncorneri = 5)
       
       common /driftv/
      $    cn(lpts1,ldimt-2),
@@ -166,6 +170,7 @@ c-----------------------------------------------------------------------
       real    dq,aq
       integer  ifld,i,i0,i1,j,l1,l2,l3,e,f
       integer k,l,ef,js1,jf1,jskip1,js2,jf2,jskip2,j1,j2,p
+      integer nblid,nbrid,ntlid,ntrid
       character CB*3
       integer iglsum
       integer npts
@@ -187,7 +192,7 @@ c-----------------------------------------------------------------------
       parameter(Fcst     = 96485.0)
       parameter(Rcst     = 8.314)
 c      parameter(Dcst     = 1.1611E-11)
-      parameter(Dcst     = 1.1611E-9)
+      parameter(Dcst     = 5.1611E-10)
       parameter(Qcst     = 8000.0)
       parameter(vncst    = 1.0)
       parameter(vkzero   = 0.6E-5)
@@ -205,19 +210,72 @@ c      parameter(Dcst     = 1.1611E-11)
       vKa   = vncst*Fcst*thetacst/Rcst/Ta
       vKc   = vncst*Fcst*thetacst/Rcst/Tc
 
-      ! TODO: HARDCODE corner
-      do i = 1,5
-        do j = 1,5
-          vx(lx1-i+1,lx1-j+1,1,20*20)   = 0.0
-          vx(lx1-i+1,j,      1,20)      = 0.0
-          vx(i,      j,      1,1)       = 0.0
-          vx(i,      lx1-j+1,1,19*20+1) = 0.0
-          vy(lx1-i+1,lx1-j+1,1,20*20)   = 0.0
-          vy(lx1-i+1,j,      1,20)      = 0.0
-          vy(i,      j,      1,1)       = 0.0
-          vy(i,      lx1-j+1,1,19*20+1) = 0.0
-        enddo
+      ifflow = .false.
+c      ifheat = .false.
+c     TODO: put in usrdat? skip Nek5000 solve
+      do i = 1,ldimt
+        idpss(i) = -1
       enddo
+      if(istep.eq.0) 
+     &     call gfldr('precompute-vel-temp/salazar-ins-pnp0.f00150')
+
+c     ! TODO: HARDCODE corner
+c     nblid = -1
+c     nbrid = -1
+c     ntlid = -1
+c     ntrid = -1
+c     do e = 1,nelv
+c       k = lglel(e)
+c       if (k.eq.nbli) then
+c         nblid = nid
+c       endif
+c       if (k.eq.nbri) then
+c         nbrid = nid
+c       endif
+c       if (k.eq.ntli) then
+c         ntlid = nid
+c       endif
+c       if (k.eq.ntri) then
+c         ntrid = nid
+c       endif
+c     enddo
+
+c     ! TODO: HARDCODE corner
+c     do e = 1,nelv
+c       k = lglel(e)
+c       if ((k.eq.nbli).and.(nid.eq.nblid)) then
+c         do i = 1,ncorneri
+c           do j = 1,ncorneri
+c             vx(i,j,1,e) = 0.0
+c             vy(i,j,1,e) = 0.0
+c           enddo
+c         enddo
+c       endif
+c       if ((k.eq.nbri).and.(nid.eq.nbrid)) then
+c         do i = 1,ncorneri
+c           do j = 1,ncorneri
+c             vx(lx1-i+1,j,1,e) = 0.0
+c             vy(lx1-i+1,j,1,e) = 0.0
+c           enddo
+c         enddo
+c       endif 
+c       if ((k.eq.ntli).and.(nid.eq.ntlid)) then
+c         do i = 1,ncorneri
+c           do j = 1,ncorneri
+c             vx(i,lx1-j+1,1,e) = 0.0
+c             vy(i,lx1-j+1,1,e) = 0.0
+c           enddo
+c         enddo
+c       endif
+c       if ((k.eq.ntri).and.(nid.eq.ntrid)) then
+c         do i = 1,ncorneri
+c           do j = 1,ncorneri
+c             vx(lx1-i+1,lx1-j+1,1,e) = 0.0
+c             vy(lx1-i+1,lx1-j+1,1,e) = 0.0
+c           enddo
+c         enddo
+c       endif
+c     enddo
 
       ! ==============
       ! One time run
@@ -403,7 +461,7 @@ c     pff order.
       ! TODO: only start solve at step 1?
       if (istep.ne.0) then
 
-      call rzero(rescn,lpts1*ldimt)
+      call rzero(rescn,lpts1*(ldimt-2))
       call rzero(bc_flux,lxzfl*ldimt)
       call rzero(bc_conv,lxzfl*ldimt)
 
@@ -507,6 +565,27 @@ c     pff order.
      &                 -cri*(1+vncst*Fcst*thetacst
      &                       *etac/Rcst/Tc))
       enddo
+
+      tmpa_1 = 0.0
+      tmpc_1 = 0.0
+      do e=1,lelt
+        do f=1,nfaces
+          ! TODO: Assume every nodes on a face have the same BC
+          CB = CBC(f,e,3)
+          if (CB.eq.'R  ') then
+            j = (e-1)*nfaces*nxzf+(f-1)*nxzf+1
+            i0 = cemface(j)
+            xx = xm1(i0,1,1,1)
+            if (abs(xx).lt.eps) then         ! if current face on anode
+              call surface_int(tmpa_1,sarea,dina,e,f)        
+            elseif (abs(xx-0.001).lt.eps) then   ! if current face on cathode
+              call surface_int(tmpc_1,sarec,dinc,e,f)        
+            endif
+          endif
+        enddo
+      enddo
+      write(6,*) 'ina,inc,mean',tmpa_1/0.001,tmpc_1/0.001,
+     &                         (tmpa_1+tmpc_1)/0.002
 
       ! ====================
       ! Enforce Robin BC
@@ -657,10 +736,7 @@ c     call bcneusc (wa,npts,5,1)
 c...  solve u_0 after assemble and mask for boundary on right hand side  
       call dssum (wb,lx1,ly1,lz1)
       call col2 (wb,mask,npts)
-      write(6,*) '==wb', wb(1),wb(2),wb(3)
       call cggo2 (wa,wb,h1,h2,amult,mask,imsh,isd,npts,tol,maxit)
-
-      write(6,*) '==wa', wa(1),wa(2),wa(3)
       
 c...  add u = u_0 + u_b (u_0= potent, u_b=potent_b if applicable)  
       call add2(potent,wa,npts)
