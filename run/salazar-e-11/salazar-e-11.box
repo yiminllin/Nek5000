@@ -1,0 +1,29 @@
+salazar_box.rea
+2                      spatial dimension
+1                      number of fields
+#
+#
+#
+#
+#========================================================
+#
+Box1
+-50  -50                       nelx,nely,nelz for Box
+0   0.0005  1.05                     x0 x1 ratio 
+0   0.0005  1.05                     y0 y1 ratio 
+W  ,   ,W  ,   ,              bc's
+Box2
+-50  -50                       nelx,nely,nelz for Box
+0.0005   0.001  0.952381                     x0 x1 ratio 
+0   0.0005      1.05                y0 y1 ratio 
+   ,W  ,W  ,   ,              bc's
+Box3
+-50  -50                       nelx,nely,nelz for Box
+0   0.0005  1.05                     x0 x1 ratio 
+0.0005   0.001  0.952381                     y0 y1 ratio 
+W  ,   ,   ,W  ,              bc's
+Box4
+-50  -50                       nelx,nely,nelz for Box
+0.0005   0.001  0.952381                     x0 x1 ratio 
+0.0005   0.001  0.952381                     y0 y1 ratio 
+   ,W  ,   ,W  ,              bc's
