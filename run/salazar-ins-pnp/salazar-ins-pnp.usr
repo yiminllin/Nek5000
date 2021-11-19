@@ -149,7 +149,7 @@ c     parameter (ncorneri = 5)
       real mask(lpts1),bc_flux(lxzfl,ldimt),bc_conv(lxzfl,ldimt)
       real E_eq(lpts1)
       real amult(lpts1)
-      real tmp,tmp2,wtmp(lpts1),rhs(lpts1),h1(lpts1),h2(lpts1)
+      real tmp,tmp1,tmp2,wtmp(lpts1),rhs(lpts1),h1(lpts1),h2(lpts1)
       real h1c(lpts1,ldimt),h2c(lpts1,ldimt)
       real gradp(lpts1,3)
       integer cemface,ncemface
@@ -202,7 +202,7 @@ c      parameter(Dcst     = 1.1611E-11)
       parameter(Ta       = 360)
       parameter(Tc       = 300)
       parameter(Vcell    = 0.05)
-      parameter(eps      = 1e-16)
+      parameter(eps      = 1e-14)
 
       npts = lx1*ly1*lz1*nelt
       Ca   = vncst*Fcst*vkzero*exp(Exa/Rcst*(1./Tzero - 1./Ta))
@@ -514,6 +514,7 @@ c     pff order.
       call rzero(tmpintg_c1,npts)
       call rzero(tmpintg_c2,npts)
 
+      write(6,*) 'Ca,Cc,vKa,vKc',Ca,Cc,vKa,vKc
       ! (tmpa_1+tmpc_1)E_a = tmpa_2+tmpc_2
       ! vlhs_coeff E_a = rhs_coeff
       do i=1,npts
@@ -534,22 +535,27 @@ c     pff order.
             i0 = cemface(j)
             xx = xm1(i0,1,1,1)
             if (abs(xx).lt.eps) then         ! if current face on anode
-              call surface_int(tmpa_1,sarea,tmpintg_a1,e,f)        
-              call surface_int(tmpa_2,sarea,tmpintg_a2,e,f)        
+              call surface_int(tmp1,sarea,tmpintg_a1,e,f)    
+              call surface_int(tmp2,sarea,tmpintg_a2,e,f) 
+              tmpa_1 = tmpa_1 + tmp1
+              tmpa_2 = tmpa_2 + tmp2
             elseif (abs(xx-0.001).lt.eps) then   ! if current face on cathode
-              call surface_int(tmpc_1,sarec,tmpintg_c1,e,f)        
-              call surface_int(tmpc_2,sarec,tmpintg_c2,e,f)        
+              call surface_int(tmp1,sarec,tmpintg_c1,e,f)        
+              call surface_int(tmp2,sarec,tmpintg_c2,e,f)        
+              tmpc_1 = tmpc_1 + tmp1
+              tmpc_2 = tmpc_2 + tmp2
             endif
           endif
         enddo
       enddo
       E_a = (tmpa_2+tmpc_2)/(tmpa_1+tmpc_1)
       E_c = E_a + Vcell
+      write(6,*) 'Ea,Ec',E_a,E_c
 
       ! Step 3: Calculate i \cdot n
       coeffa = vncst*Fcst*vkzero*exp(Exa/Rcst*(1.0/Tzero-1.0/Ta))
       coeffc = vncst*Fcst*vkzero*exp(Exa/Rcst*(1.0/Tzero-1.0/Tc))
-      do i=1,lpts1
+      do i=1,npts
       ! TODO: precompute
         coi = cn(i,1)
         cri = cn(i,2)
@@ -577,15 +583,17 @@ c     pff order.
             i0 = cemface(j)
             xx = xm1(i0,1,1,1)
             if (abs(xx).lt.eps) then         ! if current face on anode
-              call surface_int(tmpa_1,sarea,dina,e,f)        
+              call surface_int(tmp1,sarea,dina,e,f)   
+              tmpa_1 = tmpa_1 + tmp1     
             elseif (abs(xx-0.001).lt.eps) then   ! if current face on cathode
-              call surface_int(tmpc_1,sarec,dinc,e,f)        
+              call surface_int(tmp1,sarec,dinc,e,f)        
+              tmpc_1 = tmpc_1 + tmp1     
             endif
           endif
         enddo
       enddo
-      write(6,*) 'ina,inc,mean',tmpa_1/0.001,tmpc_1/0.001,
-     &                         (tmpa_1+tmpc_1)/0.002
+      write(6,*) 'ina,inc,mean,power',tmpa_1/0.001,tmpc_1/0.001,
+     &                 (tmpa_1+tmpc_1)/0.002,tmpa_1/0.001*Vcell
 
       ! ====================
       ! Enforce Robin BC
