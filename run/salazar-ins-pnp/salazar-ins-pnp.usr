@@ -539,6 +539,7 @@ c     pff order.
               call surface_int(tmp2,sarea,tmpintg_a2,e,f) 
               tmpa_1 = tmpa_1 + tmp1
               tmpa_2 = tmpa_2 + tmp2
+c             write(6,*) 'nid,tmpa_1,e,f',nid,tmpa_1,e,f 
             elseif (abs(xx-0.001).lt.eps) then   ! if current face on cathode
               call surface_int(tmp1,sarec,tmpintg_c1,e,f)        
               call surface_int(tmp2,sarec,tmpintg_c2,e,f)        
@@ -548,9 +549,16 @@ c     pff order.
           endif
         enddo
       enddo
+      tmpa_1 = glsum(tmpa_1,1)
+      tmpc_1 = glsum(tmpc_1,1)
+      tmpa_2 = glsum(tmpa_2,1)
+      tmpc_2 = glsum(tmpc_2,1)
+c     write(6,*) 'nid,tmpa_1,tmpa_2,tmpc_1,tmpc_2',nid,tmpa_1,tmpa_2,
+c    &            tmpc_1,tmpc_2
       E_a = (tmpa_2+tmpc_2)/(tmpa_1+tmpc_1)
       E_c = E_a + Vcell
-      write(6,*) 'Ea,Ec',E_a,E_c
+      write(6,*) 'nid,Ea,Ec',nid,E_a,E_c
+      write(6,*) 'nid,npts,lelt,nelt',nid,npts,lelt,nelt
 
       ! Step 3: Calculate i \cdot n
       coeffa = vncst*Fcst*vkzero*exp(Exa/Rcst*(1.0/Tzero-1.0/Ta))
@@ -592,6 +600,8 @@ c     pff order.
           endif
         enddo
       enddo
+      tmpa_1 = glsum(tmpa_1,1)
+      tmpc_1 = glsum(tmpc_1,1)
       write(6,*) 'ina,inc,mean,power',tmpa_1/0.001,tmpc_1/0.001,
      &                 (tmpa_1+tmpc_1)/0.002,tmpa_1/0.001*Vcell
 
