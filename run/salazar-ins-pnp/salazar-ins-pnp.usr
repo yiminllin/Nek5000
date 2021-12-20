@@ -91,6 +91,7 @@ c-----------------------------------------------------------------------
 
       do iip=1,ldimt1
          ifpsco(iip) = .true.
+         iffilter(iip) = .true.
       enddo
 
       return
@@ -192,7 +193,7 @@ c     parameter (ncorneri = 5)
       parameter(Fcst     = 96485.0)
       parameter(Rcst     = 8.314)
 c      parameter(Dcst     = 1.1611E-11)
-      parameter(Dcst     = 5.1611E-10)
+      parameter(Dcst     = 1.1611E-11)
       parameter(Qcst     = 8000.0)
       parameter(vncst    = 1.0)
       parameter(vkzero   = 0.6E-5)
@@ -603,7 +604,8 @@ c    &            tmpc_1,tmpc_2
       tmpa_1 = glsum(tmpa_1,1)
       tmpc_1 = glsum(tmpc_1,1)
       write(6,*) 'ina,inc,mean,power',tmpa_1/0.001,tmpc_1/0.001,
-     &                 (tmpa_1+tmpc_1)/0.002,tmpa_1/0.001*Vcell
+     &                 (tmpa_1+tmpc_1)/0.002,tmpa_1/0.001*Vcell,
+     &                 tmpc_1/0.001*Vcell
 
       ! ====================
       ! Enforce Robin BC
@@ -617,9 +619,11 @@ c    &            tmpc_1,tmpc_2
 
             tmp = gradT(i0,1)*unxm(j)+gradT(i0,2)*unym(j)
             Ti  = t(i0,1,1,1,1)
-            bc_conv(j,1) = Qcst/Rcst/Ti/Ti*tmp
+            bc_conv(j,1) = 0.0
             if (abs(xx).lt.eps) then
-              bc_flux(j,1) = -dina(i0)/zvalence(1)/Fcst/Dcst
+              bc_flux(j,1) =  -dina(i0)/Fcst !/Dcst
+            elseif (abs(xx-0.001).lt.eps) then
+              bc_flux(j,1) =  -dina(i0)/Fcst !/Dcst
             endif
          enddo
       endif
@@ -632,9 +636,11 @@ c    &            tmpc_1,tmpc_2
 
             tmp = gradT(i0,1)*unxm(j)+gradT(i0,2)*unym(j)
             Ti  = t(i0,1,1,1,1)
-            bc_conv(j,2) = Qcst/Rcst/Ti/Ti*tmp
-            if (abs(xx-0.001).lt.eps) then
-              bc_flux(j,2) = -dinc(i0)/zvalence(2)/Fcst/Dcst
+            bc_conv(j,2) = 0.0
+            if (abs(xx).lt.eps) then
+              bc_flux(j,2) = dina(i0)/Fcst ! dinc(i0)/Fcst !/Dcst
+            elseif (abs(xx-0.001).lt.eps) then
+              bc_flux(j,2) = dina(i0)/Fcst ! dinc(i0)/Fcst !/Dcst
             endif
          enddo
       endif
@@ -646,7 +652,7 @@ c    &            tmpc_1,tmpc_2
             xx = xm1(i0,1,1,1)
             tmp = gradT(i0,1)*unxm(j)+gradT(i0,2)*unym(j)
             Ti  = t(i0,1,1,1,1)
-            bc_conv(j,3) = Qcst/Rcst/Ti/Ti*tmp
+            bc_conv(j,3) = 0.0 ! Qcst/Rcst/Ti/Ti*tmp
             bc_flux(j,3) = 0.0
          enddo
       endif
@@ -669,13 +675,13 @@ c...  set rhs = -\sum z_k D_k \Delta c_k (weak form)
       call rzero(wc,npts)
 
 c...  set rhs = -\sum z_k D_k \Delta c_k - \sum Q_i/(R*T^2)*D_i*c_i \Delta T (weak form)
-      do ic = 1,ldimt-2
-        call cmult2(w_h1,cn(1,ic),-Dcst*Qcst/Rcst,npts)
-        call invcol2(w_h1,t,npts)
-        call invcol2(w_h1,t,npts)
-        call axhelm(wn,t,w_h1,w_h2,1,1)
-        call add2(rhs,wn,npts)
-      enddo
+c     do ic = 1,ldimt-2
+c       call cmult2(w_h1,cn(1,ic),-Dcst*Qcst/Rcst,npts)
+c       call invcol2(w_h1,t,npts)
+c       call invcol2(w_h1,t,npts)
+c       call axhelm(wn,t,w_h1,w_h2,1,1)
+c       call add2(rhs,wn,npts)
+c     enddo
 
 c...  set up surface integral terms \sum z_i D_i \pd{c_i}{n}
       call rzero(wa,npts)
@@ -788,8 +794,10 @@ c...  add u = u_0 + u_b (u_0= potent, u_b=potent_b if applicable)
         ! rescn = rescn - dt*(u \cdot \nabla c_i)
         ! gradp = - \nabla \phi
 !TODO: to 3D
-        call vdot2(wn,gradcn(1,1,ic),gradcn(1,2,ic),
-     &             vx(1,1,1,1),vy(1,1,1,1),npts)
+c       call vdot2(wn,gradcn(1,1,ic),gradcn(1,2,ic),
+c    &             vx(1,1,1,1),vy(1,1,1,1),npts)
+c       call add2s2(rescn(1,ic),wn,-1.0*dt,npts)
+        call convect_new(wn,cn(1,ic),.false.,vx,vy,vz,.false.)
         call add2s2(rescn(1,ic),wn,-1.0*dt,npts)
         
         ! rescn = rescn - dt*(Q_i/R/T^2*D_i*c_i \Delta T)
@@ -886,6 +894,8 @@ c       call bcneusc (wa,npts,ic+1,1)
       ! TODO: hardcoded
       call cmult2(cn(1,3),wa,-1.0/zvalence(3),npts) 
       call rzero(wa,npts)
+
+      call qq_filter(0.01)
 
       call copy(t(1,1,1,1,2),cn(1,1),npts)
       call copy(t(1,1,1,1,3),cn(1,2),npts)
@@ -1072,4 +1082,217 @@ c...       Our routine will give result of u=[1/2,1/2]
       return
       end
 
+c-----------------------------------------------------------------------
+      subroutine qq_filter(wght)
+c
+c     filter vx,vy,vz, and p by simple interpolation
+c
+      include 'SIZE'
+      include 'TOTAL'
 
+      parameter (lpts1=lx1*ly1*lz1*lelt)
+
+      common /driftv/
+     $    cn(lpts1,ldimt-2),
+     $    potent(lpts1),
+     $    rescn(lpts1,ldimt-2),
+     $    diff_n(lpts1,ldimt-2),
+     $    vmu_n(lpts1,ldimt-2),
+     $    zvalence(ldimt-2),
+     $    dmask(lpts1,ldimt-1),
+     $    q_vol(lx1,ly1,lz1,lelt)
+
+ 
+c     These are the dimensions that we interpolate onto for v and p:
+      parameter(lxv=lx1-1)
+      parameter(lxp=lx2-1)
+c
+      real intdv(lx1,lx1)
+      real intuv(lx1,lx1)
+      real intdp(lx1,lx1)
+      real intup(lx1,lx1)
+      real intv(lx1,lx1)
+      real intp(lx1,lx1)
+c
+      save intdv
+      save intuv
+      save intdp
+      save intup
+      save intv
+      save intp
+
+      common /ctmp0/ intw,intt
+     $             , wk1,wk2
+     $             , zgmv,wgtv,zgmp,wgtp,tmax(100),omax(103)
+
+      real intw(lx1,lx1)
+      real intt(lx1,lx1)
+      real wk1  (lx1,lx1,lx1,lelt)
+      real wk2  (lx1,lx1,lx1)
+      real zgmv(lx1),wgtv(lx1),zgmp(lx1),wgtp(lx1)
+      integer ic
+
+
+      character*18 sfmt
+
+      integer icalld
+      save    icalld
+      data    icalld /0/
+
+      imax = nid
+      imax = iglmax(imax,1)
+      jmax = iglmax(imax,1)
+
+      if (icalld.eq.0) then
+         icalld = 1
+         ncut = 1  !  or ncut=2 with weights 0.01~0.05
+         call build_new_filter_qq(intv,zgm1,nx1,ncut,wght,nid_io)
+         if (nid_io.eq.0) write(6,18) ncut,wght
+      endif
+
+  18  format(' [filt cutoff] ',i3,'  weight',f7.4)
+
+      do ic = 1,ldimt-2
+        call filterqq(cn(1,ic),intv,nx1,nz1,wk1,wk2,intt,if3d,cnmx)
+        if (nid.eq.0) write(6,1) istep,time,cnmx
+      enddo
+
+    1 format(i8,1p7e10.3,' filt')
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine filterqq(v,f,nx,nz,w1,w2,ft,if3d,dmax)
+ 
+      include 'SIZE'
+      include 'TSTEP'
+
+      real v(nx*nx*nz,nelt),w1(1),w2(1)
+      logical if3d
+ 
+      real f(nx,nx),ft(nx,nx)
+ 
+      integer e
+ 
+      call transpose(ft,nx,f,nx)
+ 
+      nxyz=nx*nx*nz
+      dmax = 0.
+
+      nel = nelv
+
+      if (if3d) then
+         do e=1,nel
+c           Filter
+            call copy(w2,v(1,e),nxyz)
+            call mxm(f,nx,w2,nx,w1,nx*nx)
+            i=1
+            j=1
+            do k=1,nx
+               call mxm(w1(i),nx,ft,nx,w2(j),nx)
+               i = i+nx*nx
+               j = j+nx*nx
+            enddo
+            call mxm (w2,nx*nx,ft,nx,w1,nx)
+            call sub3(w2,v(1,e),w1,nxyz)
+            call copy(v(1,e),w1,nxyz)
+            smax = vlamax(w2,nxyz)
+            dmax = max(dmax,abs(smax))
+         enddo
+      else
+         do e=1,nel
+            call copy(w1,v(1,e),nxyz)
+            call mxm(f ,nx,w1,nx,w2,nx)
+            call mxm(w2,nx,ft,nx,w1,nx)
+            call sub3(w2,v(1,e),w1,nxyz)
+            call copy(v(1,e),w1,nxyz)
+            smax = vlamax(w2,nxyz)
+            dmax = max(dmax,abs(smax))
+         enddo
+      endif
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine build_new_filter_qq(intv,zpts,nx,kut,wght,nid)
+c
+c     This routing builds a 1D filter with a transfer function that
+c     looks like:
+c
+c
+c        ^
+c    d_k |
+c        |                 |
+c     1  |__________      _v_
+c        |          -_
+c        |            \  wght
+c        |             \  ___
+c        |             |   ^
+c     0  |-------------|---|>
+c
+c        0         c   N   k-->
+c
+c        Where c := N-kut is the point below which d_k = 1.
+c
+c
+c
+c      Here, nx = number of points
+c
+
+      real intv(nx,nx),zpts(nx)
+c
+      parameter (lm=40)
+      parameter (lm2=lm*lm)
+      real      phi(lm2),pht(lm2),diag(lm2),rmult(lm),Lj(lm)
+      integer   indr(lm),indc(lm),ipiv(lm)
+c
+      if (nx.gt.lm) then
+         write(6,*) 'ABORT in build_new_filter:',nx,lm
+         call exitt(1)
+      endif
+c
+      kj = 0
+      n  = nx-1
+      do j=1,nx
+         z = zpts(j)
+         call legendre_poly(Lj,z,n)
+         kj = kj+1
+         pht(kj) = Lj(1)
+         kj = kj+1
+         pht(kj) = Lj(2)
+         do k=3,nx
+            kj = kj+1
+            pht(kj) = Lj(k)-Lj(k-2)
+         enddo
+      enddo
+      call transpose (phi,nx,pht,nx)
+      call copy      (pht,phi,nx*nx)
+      call gaujordf  (pht,nx,nx,indr,indc,ipiv,ierr,rmult)
+c
+c     Set up transfer function
+c
+      call ident   (diag,nx)
+c
+      k0 = nx-kut
+      do k=k0+1,nx
+         kk = k+nx*(k-1)
+         amp = wght*(k-k0)*(k-k0)/(kut*kut)   ! quadratic growth
+         diag(kk) = 1.-amp
+      enddo
+c
+      call mxm  (diag,nx,pht,nx,intv,nx)      !          -1
+      call mxm  (phi ,nx,intv,nx,pht,nx)      !     V D V
+      call copy (intv,pht,nx*nx)
+c
+      do k=1,nx*nx
+         pht(k) = 1.-diag(k)
+      enddo
+      np1 = nx+1
+      if (nid.eq.0) then
+         write(6,6) ' [filt amp] ',(pht (k),k=1,nx*nx,np1)
+         write(6,6) ' [filt trn] ',(diag(k),k=1,nx*nx,np1)
+   6     format(a8,16f7.4,6(/,8x,16f7.4))
+      endif
+c
+      return
+      end
+c-----------------------------------------------------------------------
