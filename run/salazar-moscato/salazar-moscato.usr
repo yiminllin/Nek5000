@@ -1,0 +1,621 @@
+c-----------------------------------------------------------------------
+      subroutine uservp (i,j,k,eg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      parameter(Dcst = 1.1611E-9)
+      
+      integer i,j,k,e,eg     
+      real kappae(lx1,ly1,lz1,lelt)
+      common /SALAZAR/ ionflux,kappae,
+     &                 migration,rhsphie,phie,Ea
+
+      e = gllel(eg)
+
+      if (ifield.eq.1) then
+        udiff  = 7.281E-4    ! dynamic viscosity
+        utrans = 1242.7      ! density
+      elseif (ifield.eq.2) then
+        udiff  = 0.6         ! conductivity
+        utrans = 5203184.9   ! rho*cp
+      elseif (ifield.eq.6) then  ! potential
+        udiff  = kappae(i,j,k,e)+1e-7
+        utrans = 1.0
+      else                   
+        udiff  = Dcst        ! for each ion
+        utrans = 1.0
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userf  (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userq  (i,j,k,eg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      parameter(nion     = 3)
+
+      integer i,j,k,e,eg      
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      real kappae(lx1,ly1,lz1,lelt)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      common /SALAZAR/ ionflux,kappae,
+     &                 migration,rhsphie,phie,Ea
+
+      e = gllel(eg)
+      qvol = 0.0
+
+      if ((ifield.gt.2).and.(ifield.lt.6)) then
+        qvol = migration(i,j,k,e,ifield-2)
+      endif
+
+      if (ifield.eq.6) then
+        qvol = rhsphie(i,j,k,e)
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userbc (i,j,k,f,eg)
+      include 'SIZE'
+      include 'GEOM'
+      include 'PARALLEL'
+      include 'TSTEP'
+      include 'INPUT'
+      include 'NEKUSE'
+
+      parameter(xLength  = 0.001)
+      parameter(nion     = 3)
+      parameter(ioxi     = 1)
+      parameter(ired     = 2)
+      parameter(eps      = 1e-14)
+
+      integer i,j,k,f,e,eg,idf
+      logical onAnode,onCathode
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      common /SALAZAR/ ionflux,kappae,
+     &                 migration,rhsphie,phie,Ea
+
+      e = gllel(eg)
+
+      ux   = 0.0
+      uy   = 0.0
+      uz   = 0.0
+      temp = 0.0
+      flux = 0.0
+
+      onAnode   = ((abs(xm1(1,1,1,e)).lt.eps).and.(f.eq.4))
+      onCathode = ((abs(xm1(nx1,1,1,e)-xLength).lt.eps).and.(f.eq.2))
+
+      if (ifield.eq.(ioxi+2)) then
+      if (onAnode) flux = ionflux(i,j,k,e,ioxi)
+      if (onCathode) flux = ionflux(i,j,k,e,ioxi)
+      endif
+
+      if (ifield.eq.(ired+2)) then
+      if (onAnode) flux = ionflux(i,j,k,e,ired)
+      if (onCathode) flux = ionflux(i,j,k,e,ired)
+      endif
+
+      end
+c-----------------------------------------------------------------------
+      subroutine useric (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      if (ifield.eq.3) then ! oxidized
+        temp = 400.0
+      elseif (ifield.eq.4) then ! reduced
+        temp = 400.0
+      elseif (ifield.eq.5) then ! counter
+        temp = 2800.0
+      elseif (ifield.eq.6) then ! potential
+        temp = 0.0
+      endif
+
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      ifflow = .false.
+      idpss(1) = -1
+      
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat3
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      do iip=1,ldimt1
+         ifpsco(iip) = .true.
+         iffilter(iip) = .true.
+      enddo
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat2
+      include 'SIZE'
+      include 'TOTAL'
+
+      parameter(xLength = 0.001)
+      
+      call rescale_x(xm1,0.0,xLength)
+      call rescale_x(ym1,0.0,xLength)
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userchk
+      include 'SIZE'  
+      include 'TOTAL'
+     
+      parameter(lpts1    = lx1*ly1*lz1*lelt)
+      parameter(xLength  = 0.001)
+      parameter(nion     = 3)
+      parameter(ioxi     = 1)
+      parameter(ired     = 2)
+      parameter(icou     = 3)
+      parameter(ipot     = 4)
+      parameter(Fcst     = 96485.0)
+      parameter(Rcst     = 8.314)
+      parameter(Dcst     = 1.1611E-11)
+      parameter(Qcst     = 8000.0)
+      parameter(vncst    = 1.0)
+      parameter(vkzero   = 0.6E-5)
+      parameter(Tzero    = 273.15)
+      parameter(Exa      = 14.644)
+      parameter(thetacst = 0.5)
+      parameter(Ta       = 360)
+      parameter(Tc       = 300)
+      parameter(Tcst     = 330)
+      parameter(Vcell    = 0.05)
+      parameter(eps      = 1e-14)
+      parameter(tolnwton = 1e-10)
+
+      integer count,npts
+      integer iion
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      real counterion(lx1,ly1,lz1,lelt)
+      real kappae(lx1,ly1,lz1,lelt)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real pret(lx1,ly1,lz1,lelt)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      real lapc(lx1,ly1,lz1,lelt,nion)
+      real lapcc(lx1,ly1,lz1,lelt,nion)
+      real zvalence(nion)
+      real Ea,Ec,E1,E2,E3,C1,C2,C3
+      real mobility,coeffT
+      real flux_max,flux_min
+      real s1max,s1min,s2max,s2min,s3max,s3min
+      real s4max,s4min
+      common /SALAZAR/ ionflux,kappae,
+     &                 migration,rhsphie,phie,Ea
+
+      npts = lx1*ly1*lz1*nelt
+      
+      if (istep.eq.0) then
+
+        call gfldr('precompute-vel-temp/salazar-moscato0.f00001')
+
+        ! Initial condition
+        do i = 1,lpts1
+          t(i,1,1,1,ioxi+1) = 400.0  ! oxidized
+          t(i,1,1,1,ired+1) = 400.0  ! reduced
+          t(i,1,1,1,icou+1) = 2800.0 ! counter
+          t(i,1,1,1,ipot+1) = 0.0 ! potential
+        enddo
+        
+        ! Initialize zero flux bc
+        do i = 1,nion
+          call rzero(ionflux(1,1,1,1,i),npts)
+        enddo
+        call rzero(phie,npts)
+        
+        ! Initial BV variables
+        Ea = -0.027
+      endif
+
+      zvalence(ioxi) = -4 ! oxidized
+      zvalence(ired) = -3 ! reduced
+      zvalence(icou) = 1  ! counter
+
+      ! Bulter-Volmer electrokinectics with Secant iterations
+      niter = 1000
+      E1 = Ea
+      E2 = Ea+0.0001
+      call total_current(C1,E1)
+      call total_current(C2,E2)
+      ! Secant method
+      write(6,*) '=== Start Secant, E1,E2,C1,C2',E1,E2,C1,C2
+      do iter = 1,niter
+        if (abs(C2-C1).lt.eps) then
+          if (nid.eq.0) write(6,*) '=== Secant current converges ==='
+          exit
+        endif
+        E3 = E2-C2*(E2-E1)/(C2-C1) 
+        call total_current(C3,E3)
+        write(6,*) 'iter,E3,C3',iter,E3,C3
+        if (abs(C3).lt.tolnwton) then
+          Ea = E3
+          if (nid.eq.0) write(6,*) '=== Secant current converged ==='
+          if (nid.eq.0) write(6,*) 'E_anode:',Ea
+          if (nid.eq.0) write(6,*) 'total_current:',C3
+          exit
+        endif
+        C1 = C2
+        C2 = C3
+        E1 = E2 
+        E2 = E3 
+c       if (nid.eq.0) write(6,*) 'iter,E1,E2,E3,C1,C2,C3',
+c    &                           iter,E1,E2,E3,C1,C2
+      enddo
+
+      Ec = Vcell+Ea
+      write(6,*) 'DEBUG - Ea,Ec',Ea,Ec
+
+      flux_max = glmax(ionflux(1,1,1,1,ired),npts)
+      flux_min = glmin(ionflux(1,1,1,1,ired),npts)
+      if(nid.eq.0) then
+       write(6,*) 'Red flux max/min : ', flux_max,'/',flux_min
+      endif
+      flux_max = glmax(ionflux(1,1,1,1,ioxi),npts)
+      flux_min = glmin(ionflux(1,1,1,1,ioxi),npts)
+      if(nid.eq.0) then
+       write(6,*) 'Oxi flux max/min : ', flux_max,'/',flux_min
+      endif
+
+      ! Hard enforce positivity
+      do i = 1,npts
+      do iion = 1,nion
+        if (t(i,1,1,1,iion+1).lt.eps) t(i,1,1,1,iion+1) = 0.0
+      enddo
+      enddo
+
+      ! Hard enforce electroneutrality
+      call rzero(counterion,npts)
+      do i = 1,npts
+      do iion = 1,nion
+        if (iion.ne.3) counterion(i,1,1,1) = counterion(i,1,1,1)+
+     &                           zvalence(iion)*t(i,1,1,1,iion+1)
+      enddo
+        t(i,1,1,1,4) = -counterion(i,1,1,1)/zvalence(3)
+      enddo
+
+      ! Calculate phie (potential)
+      call rzero(kappae,npts)
+      call rzero(rhsphie,npts)
+      do iion = 1,nion
+        ! lapc = Dcst * \Delta c_i
+        ! kappae = \sum F^2 z_i^2 D_i c_i / R / T
+        ! rhsphie = \sum F z_i Dcst * \Delta c_i
+        call lap_usr1(t(1,1,1,1,iion+1),Dcst,lapc(1,1,1,1,iion))
+        call lap_usr2(t(1,1,1,1,1),t(1,1,1,1,iion+1),
+     &                lapcc(1,1,1,1,iion))  			! lapcc = \nabla (c_i\nabla t)
+        do i = 1,npts
+          mobility = Dcst/(Rcst*t(i,1,1,1,1))
+          coeffT = Qcst*Dcst/(Rcst*t(i,1,1,1,1)*t(i,1,1,1,1))
+          kappae(i,1,1,1) = kappae(i,1,1,1) 
+     &         +Fcst*Fcst*zvalence(iion)*zvalence(iion)
+     &         *mobility*t(i,1,1,1,iion+1)
+          rhsphie(i,1,1,1) = rhsphie(i,1,1,1)
+     &         +Fcst*zvalence(iion)*lapc(i,1,1,1,iion)
+     &         +Fcst*zvalence(iion)*coeffT*lapcc(i,1,1,1,iion)
+        enddo
+      enddo
+
+      write(6,*) 'glmax(kappae,npts)',glmax(kappae,npts)
+      write(6,*) 'glmin(kappae,npts)',glmin(kappae,npts)
+      write(6,*) 'glmax(rhsphie,npts)',glmax(rhsphie,npts)
+      write(6,*) 'glmin(rhsphie,npts)',glmin(rhsphie,npts)
+
+
+      call pnp_poisson_test
+
+      ! Calculate migration term for the next time step
+      do iion = 1,nion
+        ! migration_i = \nabla (z_i c_i F D_i /R/T \nabla phi)
+        call lap_usr2(phie,t(1,1,1,1,iion+1),migration(1,1,1,1,iion))
+        call lap_usr2(t(1,1,1,1,1),t(1,1,1,1,iion+1),
+     &                lapcc(1,1,1,1,iion))  			! lapcc = \nabla (c_i\nabla t)
+        do i = 1,npts
+          mobility = Dcst/(Rcst*t(i,1,1,1,1))
+          coeffT = Qcst*Dcst/(Rcst*t(i,1,1,1,1)*t(i,1,1,1,1))
+          migration(i,1,1,1,iion) = migration(i,1,1,1,iion)
+     &                   *zvalence(iion)*mobility*Fcst +
+     &                    coeffT*lapcc(1,1,1,1,iion)
+        enddo
+      enddo
+
+      s1max = glmax(t(1,1,1,1,2),npts)
+      s1min = glmin(t(1,1,1,1,2),npts)
+      s2max = glmax(t(1,1,1,1,3),npts)
+      s2min = glmin(t(1,1,1,1,3),npts)
+      s3max = glmax(t(1,1,1,1,4),npts)
+      s3min = glmin(t(1,1,1,1,4),npts)
+      s4max = glmax(t(1,1,1,1,5),npts)
+      s4min = glmin(t(1,1,1,1,5),npts)
+
+      if(nid.eq.0) then
+       write(6,*) 'scalar max/min : ', s1max,s1min,s2max,
+     &      s2min,s3max,s3min,s4max,s4min
+      endif
+
+      return
+      end
+
+c-----------------------------------------------------------------------
+      subroutine total_current(totCurrent,Eiter)
+      include 'SIZE'
+      include 'TOTAL'
+
+      parameter(lpts1    = lx1*ly1*lz1*lelt)
+      parameter(xLength  = 0.001)
+      parameter(nion     = 3)
+      parameter(ioxi     = 1)
+      parameter(ired     = 2)
+      parameter(icou     = 3)
+      parameter(ipot     = 4)
+      parameter(Fcst     = 96485.0)
+      parameter(Rcst     = 8.3145)
+      parameter(Dcst     = 1.1611E-9)
+      parameter(Qcst     = 8000.0)
+      parameter(vncst    = 1.0)
+      parameter(vkzero   = 0.6E-5)
+      parameter(Tzero    = 298.15)
+      parameter(Exa      = 14.644)
+      parameter(thetacst = 0.5)
+      parameter(Ta       = 360)
+      parameter(Tc       = 300)
+      parameter(Tcst     = 330)
+      parameter(Vcell    = 0.05)
+      parameter(eps      = 1e-14)
+      parameter(tolnwton = 1e-8)
+      parameter(vMob     = Dcst/(Rcst*Tcst))
+
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      real Eeq,eta,coi,cri,ti    ! equilibrium potential, overpotential, node concentration + temp
+      real totinAnode,totinCathode
+      real sintA,sintC,sareaA,sareaC
+      real Eiter
+      integer i,j,k,e,f,c
+      integer i0,i1,j0,j1,k0,k1
+      integer countA,countC
+      integer npts
+      logical onAnode,onCathode
+      common /SALAZAR/ ionflux,kappae,
+     &                 migration,rhsphie,phie,Ea
+
+      npts = lx1*ly1*lz1*nelv
+
+      ! Loop through boundaries and calculate ion flux i \cdot n
+      write(6,*) 'lelt,nelv,nelt',lelt,nelv,nelt
+      countA = 0
+      countC = 0
+      totinAnode = 0.0
+      totinCathode = 0.0
+      do e = 1,nelv
+      do f = 1,2*ldim
+        call facind(i0,i1,j0,j1,k0,k1,nx1,ny1,nz1,f)
+        onAnode   = ((abs(xm1(1,1,1,e)).lt.eps).and.(f.eq.4))
+        onCathode = ((abs(xm1(nx1,1,1,e)-xLength).lt.eps).and.(f.eq.2))
+        do k = k0,k1
+        do j = j0,j1
+        do i = i0,i1 
+          coi = t(i,j,k,e,ioxi+1)
+          cor = t(i,j,k,e,ired+1)
+          ti  = t(i,j,k,e,1)
+          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cor)   ! equilibrium potential
+          if (onAnode) eta = Eiter-Eeq                 ! overpotential
+          if (onCathode) eta = Vcell+Eiter-Eeq
+          if (onCathode.or.onAnode) then
+          ionflux(i,j,k,e,ired) = vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))*
+     &            (coi*exp(-vncst*Fcst*(1-thetacst)*eta/(Rcst*Ti))-
+     &             cor*exp(vncst*Fcst*thetacst*eta/(Rcst*Ti)))
+          ionflux(i,j,k,e,ioxi) = -ionflux(i,j,k,e,ired)
+c         write(6,*) 'e,f,coi,cor,ti,Eeq,eta',e,f,coi,cor,ti,Eeq,eta
+c    &                ,vncst*Fcst*vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))
+c    &                ,coi*exp(-vncst*Fcst*(1-thetacst)*eta/(Rcst*Ti))
+c    &                ,cor*exp(vncst*Fcst*thetacst*eta/(Rcst*Ti))
+c    &                ,ionflux(i,j,k,e,ired),ionflux(i,j,k,e,ioxi)
+c    &                ,onAnode,onCathode
+          endif
+        enddo
+        enddo
+        enddo
+        if (onAnode) then
+          call surface_int(sintA,sareaA,ionflux(1,1,1,1,ired),e,f)
+          totinAnode = totinAnode+sintA*vncst*Fcst
+        endif
+        if (onCathode) then
+          call surface_int(sintC,sareaC,ionflux(1,1,1,1,ired),e,f)
+          totinCathode = totinCathode+sintC*vncst*Fcst
+        endif
+      enddo
+      enddo
+
+      totinAnode   = glsum(totinAnode,1)
+      totinCathode = glsum(totinCathode,1)
+      totCurrent   = totinAnode+totinCathode
+      if (nid.eq.0) write(6,*) '===totinAnode', totinAnode
+      if (nid.eq.0) write(6,*) '===totinCathode', totinCathode 
+      if (nid.eq.0) write(6,*) '===totin', totCurrent
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine lap_usr1(aa,bb,cc)
+c return cc = div(bb,grad(aa)), bb is constant
+
+      include 'SIZE'
+      include 'TOTAL'
+
+      common /scrns/ w1(lx1,ly1,lz1,lelt)
+     $              ,w2(lx1,ly1,lz1,lelt)
+     $              ,w3(lx1,ly1,lz1,lelt)
+     $              ,tx(lx1,ly1,lz1,lelt)
+     $              ,ty(lx1,ly1,lz1,lelt)
+     $              ,tz(lx1,ly1,lz1,lelt)
+
+      real aa(1),cc(1)
+      real bb
+
+      ntot = lx1*ly1*lz1*nelv
+      ifld_save = ifield
+      ifield = 1
+ 
+      call opgrad  (tx,ty,tz,aa)
+      call opdssum (tx,ty,tz)
+      call opcolv  (tx,ty,tz,binvm1)
+	  
+      do i = 1, ntot
+       w1(i,1,1,1) = bb
+      enddo
+
+      call opcolv  (tx,ty,tz,w1)
+      call opdiv   (w2,tx,ty,tz)
+
+      call dssum   (w2,lx1,ly1,lz1)
+      call col2    (w2,binvm1,ntot)
+
+      call copy(cc,w2,ntot)
+
+      ifield = ifield_save
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine lap_usr2(aa,bb,cc)
+c return c = div(b,grad(a)), b is variable
+
+      include 'SIZE'
+      include 'TOTAL'
+	  
+       common /scrns/ w1(lx1,ly1,lz1,lelt)
+     $              ,w2(lx1,ly1,lz1,lelt)
+     $              ,w3(lx1,ly1,lz1,lelt)
+     $              ,tx(lx1,ly1,lz1,lelt)
+     $              ,ty(lx1,ly1,lz1,lelt)
+     $              ,tz(lx1,ly1,lz1,lelt)
+      real aa(1),bb(1),cc(1)
+	 
+      ntot = lx1*ly1*lz1*nelv
+      ifld_save = ifield
+      ifield = 1
+
+      call opgrad  (tx,ty,tz,aa)
+      call opdssum (tx,ty,tz)
+      call opcolv  (tx,ty,tz,binvm1)
+
+      call opcolv  (tx,ty,tz,bb)
+      call opdiv   (w2,tx,ty,tz)
+
+      call dssum   (w2,lx1,ly1,lz1)
+      call col2    (w2,binvm1,ntot)
+
+      call copy(cc,w2,ntot)
+
+      ifield = ifield_save
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine pnp_poisson_test
+c     
+      include 'SIZE'
+      include 'TOTAL'
+      include 'ORTHOT' ! hsolve proj
+
+      parameter(lt       =lx1*ly1*lz1*lelt)
+      parameter(nion     = 3)
+
+      real h1(lt)
+     $   , h2(lt)
+     $   , t1(lt)
+     $   , t2(lt)
+     $   , phi_exact(lt)
+      integer ifldpot
+
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      real kappae(lx1,ly1,lz1,lelt)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      common /SALAZAR/ ionflux,kappae,
+     &                 migration,rhsphie,phie,Ea
+
+      ifldpot = 6
+      n = lx1*ly1*lz1*nelt
+
+      isd = 1
+      imsh = 1
+      maxit = 100
+      idpss(ifldpot-1)=0 ! active solver
+      ifield = ifldpot
+
+      call vprops
+      call sethlm(h1,h2,0)
+
+      call copy(h1,kappae,n)
+      call bcneusc (t2,-1) ! robin
+      call Xaddcol3(h2,t2,h1,n) ! h2=h2+t2*h1
+      call bcdirsc(phie) ! dirichlet
+      call axhelm (t1,phie,h1,h2,imsh,isd)
+	  
+      call setqvol(rhsphie) ! rhs
+      call col3(t2,rhsphie,bm1,n)	
+	
+      call sub2(t2,t1,n)
+
+      call bcneusc (t1,1) ! neumann
+      call col2(t1,h1,n)
+      call add2(t2,t1,n)
+
+!     Solve helmholtz: [h1 A + h2 B] u_0 = rhs - h1 A u_b
+      if (nio.eq.0) write(6,*) 'SOLVING MY POISSON:'
+c      ifield = 1
+c      call dssum(t2,lx1,ly1,lz1)
+c      call col2 (t2,tmask(1,1,1,1,ifldpot-1),n)
+c      ifield = ifldmhd
+c      call hmh_gmres(t2,h1,h2,tmult(1,1,1,1,ifldpot-1),maxit)
+c      call add2(phi,t2,n)
+
+      ifield = ifldpot
+      call hsolve   ('POTE',T1,T2,H1,H2
+     $              ,tmask(1,1,1,1,ifield-1)
+     $              ,tmult(1,1,1,1,ifield-1)
+     $              ,imsh,tolht(ifield),maxit,isd
+     $              ,approxt(1,0,ifield-1),napproxt(1,ifield-1)
+     $              ,bintm1)
+      call add2(phie,t1,n) ! u = u_0 + u_b
+
+      call copy(t(1,1,1,1,ifldpot-1),phie,n)
+
+      phie_max = glmax(phie,n)
+      phie_min = glmin(phie,n)
+      if(nid.eq.0) then
+       write(6,*) 'phie max/min : ', phie_max,'/',phie_min
+      endif
+
+      idpss(ifldpot-1)=-1 ! disalbe in timestep
+
+      return
+      end
+c-----------------------------------------------------------------------
