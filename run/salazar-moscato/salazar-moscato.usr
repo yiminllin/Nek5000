@@ -3,14 +3,33 @@ c-----------------------------------------------------------------------
       include 'SIZE'
       include 'TOTAL'
       include 'NEKUSE'
-      parameter(Dcst = 1.1611E-9)
-      
+      parameter(nion = 3)     
+      parameter(Dcst     = 1.1611E-9)
+      parameter(Dccst    = 1.957E-9)
+
       integer i,j,k,e,eg     
+      real diffi,Ti
+
+      real ionflux(lx1,ly1,lz1,lelt,nion)
       real kappae(lx1,ly1,lz1,lelt)
-      common /SALAZAR/ ionflux,kappae,
-     &                 migration,rhsphie,phie,Ea
+      real diffCoeff(lx1,ly1,lz1,lelt,nion)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real gradT(lx1,ly1,lz1,lelt,3)
+      real Ea
+      common /SALAZAR/ ionflux,kappae,diffCoeff,
+     &                 migration,rhsphie,phie,Ea,gradT
 
       e = gllel(eg)
+
+c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
+c    &   .and.(nid.eq.0)) then
+c     write(6,*) '==== call uservp'
+c     endif
+
+      udiff = 0.0
+      utrans = 0.0
 
       if (ifield.eq.1) then
         udiff  = 7.281E-4    ! dynamic viscosity
@@ -19,12 +38,36 @@ c-----------------------------------------------------------------------
         udiff  = 0.6         ! conductivity
         utrans = 5203184.9   ! rho*cp
       elseif (ifield.eq.6) then  ! potential
-        udiff  = kappae(i,j,k,e)+1e-7
+!        udiff  = kappae(i,j,k,e)+1e-7
+        udiff  = 60.0
         utrans = 1.0
-      else                   
-        udiff  = Dcst        ! for each ion
+      else
+        if (istep.ne.0) then
+c       udiff  = diffCoeff(i,j,k,e,ifield-2) 
+        Ti = t(i,j,k,e,1)
+        udiff = (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10
+
+        if (udiff.le.0.0) then
+          write(6,*) 'negative',i,j,k,e,udiff
+        endif
         utrans = 1.0
+        else
+        if (ifield.eq.3) then
+          udiff = Dcst
+          utrans = 1.0
+        elseif (ifield.eq.4) then
+          udiff = Dcst
+          utrans = 1.0
+        elseif (ifield.eq.5) then
+          udiff = Dccst
+          utrans = 1.0
+        endif
+        endif
       endif
+
+c     write(6,*) 'uservp,glmax(kappae,npts)',glmax(kappae,npts)
+c     write(6,*) 'uservp,glmin(kappae,npts)',glmin(kappae,npts)
+c     write(6,*) 'uservp,Dcst',Dcst
 
       return
       end
@@ -33,6 +76,10 @@ c-----------------------------------------------------------------------
       include 'SIZE'
       include 'TOTAL'
       include 'NEKUSE'
+
+      ffx = 0.0
+      ffy = 0.0
+      ffz = 0.0
 
       return
       end
@@ -45,15 +92,28 @@ c-----------------------------------------------------------------------
       parameter(nion     = 3)
 
       integer i,j,k,e,eg      
+      integer npts
+      real migration_max,migration_min
+      real rhsphie_max,rhsphie_min
+
       real ionflux(lx1,ly1,lz1,lelt,nion)
       real kappae(lx1,ly1,lz1,lelt)
-      real rhsphie(lx1,ly1,lz1,lelt)
+      real diffCoeff(lx1,ly1,lz1,lelt,nion)
       real migration(lx1,ly1,lz1,lelt,nion)
-      common /SALAZAR/ ionflux,kappae,
-     &                 migration,rhsphie,phie,Ea
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real gradT(lx1,ly1,lz1,lelt,3)
+      real Ea
+      common /SALAZAR/ ionflux,kappae,diffCoeff,
+     &                 migration,rhsphie,phie,Ea,gradT
 
       e = gllel(eg)
+      npts = lx1*ly1*lz1*nelt
       qvol = 0.0
+c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
+c    &   .and.(nid.eq.0)) then
+c     write(6,*) '==== call userq'
+c     endif
 
       if ((ifield.gt.2).and.(ifield.lt.6)) then
         qvol = migration(i,j,k,e,ifield-2)
@@ -62,6 +122,18 @@ c-----------------------------------------------------------------------
       if (ifield.eq.6) then
         qvol = rhsphie(i,j,k,e)
       endif
+      
+c     migration_max = glmax(migration,npts)
+c     migration_min = glmin(migration,npts)
+c     rhsphie_max = glmax(rhsphie,npts)
+c     rhsphie_min = glmin(rhsphie,npts)
+c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
+c    &   .and.(nid.eq.0)) then
+c     write(6,*) 'userq,glmax(migration,npts)',istep,migration_max
+c     write(6,*) 'userq,glmin(migration,npts)',istep,migration_min
+c     write(6,*) 'userq,glmax(rhsphie,npts)',istep,rhsphie_max
+c     write(6,*) 'userq,glmin(rhsphie,npts)',istep,rhsphie_min
+c     endif
 
       return
       end
@@ -73,25 +145,46 @@ c-----------------------------------------------------------------------
       include 'TSTEP'
       include 'INPUT'
       include 'NEKUSE'
+      include 'SOLN'
 
       parameter(xLength  = 0.001)
       parameter(nion     = 3)
       parameter(ioxi     = 1)
       parameter(ired     = 2)
+      parameter(Fcst     = 96485.0)
+      parameter(Rcst     = 8.314)
+      parameter(Dcst     = 1.1611E-9)
+      parameter(Qcst     = 8000.0)
       parameter(eps      = 1e-14)
 
       integer i,j,k,f,e,eg,idf
+      integer npts
       logical onAnode,onCathode
+      real flux_max,flux_min
+      real Ti,diffi,gradTi,coeffi
+
       real ionflux(lx1,ly1,lz1,lelt,nion)
-      common /SALAZAR/ ionflux,kappae,
-     &                 migration,rhsphie,phie,Ea
+      real kappae(lx1,ly1,lz1,lelt)
+      real diffCoeff(lx1,ly1,lz1,lelt,nion)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real gradT(lx1,ly1,lz1,lelt,3)
+      real Ea
+      common /SALAZAR/ ionflux,kappae,diffCoeff,
+     &                 migration,rhsphie,phie,Ea,gradT
 
+      npts = lx1*ly1*lz1*nelt
       e = gllel(eg)
+c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
+c    &   .and.(nid.eq.0)) then
+c     write(6,*) '==== call userbc'
+c     endif
 
-      ux   = 0.0
-      uy   = 0.0
-      uz   = 0.0
-      temp = 0.0
+c     ux   = 0.0
+c     uy   = 0.0
+c     uz   = 0.0
+c     temp = 0.0
       flux = 0.0
 
       onAnode   = ((abs(xm1(1,1,1,e)).lt.eps).and.(f.eq.4))
@@ -107,12 +200,27 @@ c-----------------------------------------------------------------------
       if (onCathode) flux = ionflux(i,j,k,e,ired)
       endif
 
+c     flux_max = glmax(ionflux(1,1,1,1,ired),npts)
+c     flux_min = glmin(ionflux(1,1,1,1,ired),npts)
+c     if(nid.eq.0) then
+c      write(6,*) 'userbc:Red flux max/min : ', flux_max,'/',flux_min
+c     endif
+c     flux_max = glmax(ionflux(1,1,1,1,ioxi),npts)
+c     flux_min = glmin(ionflux(1,1,1,1,ioxi),npts)
+c     if(nid.eq.0) then
+c      write(6,*) 'userbc:Oxi flux max/min : ', flux_max,'/',flux_min
+c     endif
+
       end
 c-----------------------------------------------------------------------
       subroutine useric (ix,iy,iz,ieg)
       include 'SIZE'
       include 'TOTAL'
       include 'NEKUSE'
+c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
+c    &   .and.(nid.eq.0)) then
+c     write(6,*) '==== call useric'
+c     endif
 
       if (ifield.eq.3) then ! oxidized
         temp = 400.0
@@ -133,6 +241,9 @@ c-----------------------------------------------------------------------
 
       ifflow = .false.
       idpss(1) = -1
+      do i = 1,6
+        NMXT(i) = 10000
+      enddo
       
       return
       end
@@ -175,12 +286,15 @@ c-----------------------------------------------------------------------
       parameter(ipot     = 4)
       parameter(Fcst     = 96485.0)
       parameter(Rcst     = 8.314)
-      parameter(Dcst     = 1.1611E-11)
+      parameter(Dcst     = 1.1611E-9)
+      parameter(Dccst    = 1.957E-9)
       parameter(Qcst     = 8000.0)
       parameter(vncst    = 1.0)
-      parameter(vkzero   = 0.6E-5)
-      parameter(Tzero    = 273.15)
-      parameter(Exa      = 14.644)
+      parameter(vkzero   = 0.000006)
+c     parameter(Tzero    = 273.15)
+      parameter(Tzero    = 298.15)
+      parameter(Exa      = 14644)
+
       parameter(thetacst = 0.5)
       parameter(Ta       = 360)
       parameter(Tc       = 300)
@@ -189,27 +303,41 @@ c-----------------------------------------------------------------------
       parameter(eps      = 1e-14)
       parameter(tolnwton = 1e-10)
 
+      real migration_max,migration_min
+      real rhsphie_max,rhsphie_min
+      real kappae_max,kappae_min
       integer count,npts
       integer iion
-      real ionflux(lx1,ly1,lz1,lelt,nion)
       real counterion(lx1,ly1,lz1,lelt)
-      real kappae(lx1,ly1,lz1,lelt)
-      real rhsphie(lx1,ly1,lz1,lelt)
-      real phie(lx1,ly1,lz1,lelt)
       real pret(lx1,ly1,lz1,lelt)
-      real migration(lx1,ly1,lz1,lelt,nion)
       real lapc(lx1,ly1,lz1,lelt,nion)
       real lapcc(lx1,ly1,lz1,lelt,nion)
+      real tmpa(lx1,ly1,lz1,lelt)
+      real tmpb(lx1,ly1,lz1,lelt)
+      real gradphie(lx1,ly1,lz1,lelt,3)
       real zvalence(nion)
-      real Ea,Ec,E1,E2,E3,C1,C2,C3
-      real mobility,coeffT
+      real Ec,E1,E2,E3,C1,C2,C3
+      real mobility,coeffT,diffi,cni
       real flux_max,flux_min
+      real gradT_max,gradT_min
+      real gradphie_max,gradphie_min
       real s1max,s1min,s2max,s2min,s3max,s3min
       real s4max,s4min
-      common /SALAZAR/ ionflux,kappae,
-     &                 migration,rhsphie,phie,Ea
+
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      real kappae(lx1,ly1,lz1,lelt)
+      real diffCoeff(lx1,ly1,lz1,lelt,nion)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real gradT(lx1,ly1,lz1,lelt,3)
+      real Ea
+      common /SALAZAR/ ionflux,kappae,diffCoeff,
+     &                 migration,rhsphie,phie,Ea,gradT
 
       npts = lx1*ly1*lz1*nelt
+      
+c     if (nid.eq.0) write(6,*) '==== call userchk'
       
       if (istep.eq.0) then
 
@@ -222,6 +350,43 @@ c-----------------------------------------------------------------------
           t(i,1,1,1,icou+1) = 2800.0 ! counter
           t(i,1,1,1,ipot+1) = 0.0 ! potential
         enddo
+        
+c       call opgrad(gradT(1,1,1,1,1),gradT(1,1,1,1,2),
+c    &              gradT(1,1,1,1,3),t(1,1,1,1,1))
+c       call opdssum(gradT(1,1,1,1,1),gradT(1,1,1,1,2),
+c    &               gradT(1,1,1,1,3))
+c       call opcolv(gradT(1,1,1,1,1),gradT(1,1,1,1,2),
+c    &              gradT(1,1,1,1,3),binvm1)
+
+c       gradT_max = glmax(gradT,npts)
+c       gradT_min = glmin(gradT,npts)
+
+c       write(6,*) 'glmax(gradT,npts)',glmax(gradT,npts)
+c       write(6,*) 'glmin(gradT,npts)',glmin(gradT,npts)
+c       write(6,*) 'gradT(1,1,1,1,1)',gradT(1,1,1,1,1)
+c       write(6,*) 'gradT(11,1,1,20,1)',gradT(11,1,1,20,1)
+c       write(6,*) 'gradT(1,1,1,381,1)',gradT(1,1,1,381,1)
+c       write(6,*) 'gradT(11,1,1,400,1)',gradT(11,1,1,400,1)
+
+        ! Initialize Diffusion coefficients (Assume fixed temperature profile)
+        do iion = 1,nion
+        do i = 1,npts
+          Ti = t(i,1,1,1,1)
+          diffCoeff(i,1,1,1,iion) = 
+     &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+        enddo
+        enddo
+
+c       do i = 1,npts
+c         Ti = t(i,1,1,1,1)
+c         diffCoeff(i,1,1,1,1) = 
+c    &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*5E-11
+c         diffCoeff(i,1,1,1,1) = 
+c    &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*3E-11 
+c         diffCoeff(i,1,1,1,3) = 
+c    &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+c       enddo
+
         
         ! Initialize zero flux bc
         do i = 1,nion
@@ -244,15 +409,16 @@ c-----------------------------------------------------------------------
       call total_current(C1,E1)
       call total_current(C2,E2)
       ! Secant method
-      write(6,*) '=== Start Secant, E1,E2,C1,C2',E1,E2,C1,C2
+c     if(nid.eq.0) write(6,*) '=== Start Secant, E1,E2,C1,C2',E1,E2,C1,C2
       do iter = 1,niter
+c       if (nid.eq.0) write(6,*) '=== Secant iter number', iter
         if (abs(C2-C1).lt.eps) then
           if (nid.eq.0) write(6,*) '=== Secant current converges ==='
           exit
         endif
         E3 = E2-C2*(E2-E1)/(C2-C1) 
         call total_current(C3,E3)
-        write(6,*) 'iter,E3,C3',iter,E3,C3
+        if (nid.eq.0) write(6,*) 'iter,E3,C3',iter,E3,C3
         if (abs(C3).lt.tolnwton) then
           Ea = E3
           if (nid.eq.0) write(6,*) '=== Secant current converged ==='
@@ -269,18 +435,18 @@ c    &                           iter,E1,E2,E3,C1,C2
       enddo
 
       Ec = Vcell+Ea
-      write(6,*) 'DEBUG - Ea,Ec',Ea,Ec
+c     write(6,*) 'DEBUG - Ea,Ec',Ea,Ec
 
-      flux_max = glmax(ionflux(1,1,1,1,ired),npts)
-      flux_min = glmin(ionflux(1,1,1,1,ired),npts)
-      if(nid.eq.0) then
-       write(6,*) 'Red flux max/min : ', flux_max,'/',flux_min
-      endif
-      flux_max = glmax(ionflux(1,1,1,1,ioxi),npts)
-      flux_min = glmin(ionflux(1,1,1,1,ioxi),npts)
-      if(nid.eq.0) then
-       write(6,*) 'Oxi flux max/min : ', flux_max,'/',flux_min
-      endif
+c     flux_max = glmax(ionflux(1,1,1,1,ired),npts)
+c     flux_min = glmin(ionflux(1,1,1,1,ired),npts)
+c     if(nid.eq.0) then
+c      write(6,*) 'Red flux max/min : ', flux_max,'/',flux_min
+c     endif
+c     flux_max = glmax(ionflux(1,1,1,1,ioxi),npts)
+c     flux_min = glmin(ionflux(1,1,1,1,ioxi),npts)
+c     if(nid.eq.0) then
+c      write(6,*) 'Oxi flux max/min : ', flux_max,'/',flux_min
+c     endif
 
       ! Hard enforce positivity
       do i = 1,npts
@@ -306,43 +472,97 @@ c    &                           iter,E1,E2,E3,C1,C2
         ! lapc = Dcst * \Delta c_i
         ! kappae = \sum F^2 z_i^2 D_i c_i / R / T
         ! rhsphie = \sum F z_i Dcst * \Delta c_i
-        call lap_usr1(t(1,1,1,1,iion+1),Dcst,lapc(1,1,1,1,iion))
-        call lap_usr2(t(1,1,1,1,1),t(1,1,1,1,iion+1),
-     &                lapcc(1,1,1,1,iion))  			! lapcc = \nabla (c_i\nabla t)
+        call lap_usr2(t(1,1,1,1,iion+1),diffCoeff(1,1,1,1,iion),
+     &                lapc(1,1,1,1,iion))         ! lapc = \nabla (D_i \nabla c_i)
+        call rzero(tmpa,npts)
         do i = 1,npts
-          mobility = Dcst/(Rcst*t(i,1,1,1,1))
-          coeffT = Qcst*Dcst/(Rcst*t(i,1,1,1,1)*t(i,1,1,1,1))
+          Ti = t(i,1,1,1,1)
+          diffi = diffCoeff(i,1,1,1,iion)
+          tmpa(i,1,1,1) = 1/(Ti*Ti)*diffi*t(i,1,1,1,iion)
+        enddo
+        call lap_usr2(t(1,1,1,1,1),tmpa,
+     &                lapcc(1,1,1,1,iion))  			! lapcc = \nabla (c_i D_i/T^2\nabla t)
+        do i = 1,npts
+          diffi = diffCoeff(i,1,1,1,iion)
+          mobility = diffi/(Rcst*t(i,1,1,1,1))
+          coeffT = Qcst*diffi/(Rcst*t(i,1,1,1,1)*t(i,1,1,1,1))
           kappae(i,1,1,1) = kappae(i,1,1,1) 
      &         +Fcst*Fcst*zvalence(iion)*zvalence(iion)
      &         *mobility*t(i,1,1,1,iion+1)
           rhsphie(i,1,1,1) = rhsphie(i,1,1,1)
-     &         +Fcst*zvalence(iion)*lapc(i,1,1,1,iion)
-     &         +Fcst*zvalence(iion)*coeffT*lapcc(i,1,1,1,iion)
+     &         -Fcst*zvalence(iion)*lapc(i,1,1,1,iion)
+     &         -Fcst*zvalence(iion)*Qcst/Rcst*lapcc(i,1,1,1,iion)
         enddo
       enddo
 
-      write(6,*) 'glmax(kappae,npts)',glmax(kappae,npts)
-      write(6,*) 'glmin(kappae,npts)',glmin(kappae,npts)
-      write(6,*) 'glmax(rhsphie,npts)',glmax(rhsphie,npts)
-      write(6,*) 'glmin(rhsphie,npts)',glmin(rhsphie,npts)
+c     kappae_max = glmax(kappae,npts)
+c     kappae_min = glmin(kappae,npts)
+c     rhsphie_max = glmax(rhsphie,npts)
+c     rhsphie_min = glmin(rhsphie,npts)
+c     migration_max = glmax(migration,npts)
+c     migration_min = glmin(migration,npts)
+c     if(nid.eq.0) then
+c     write(6,*) 'chk1,glmax(kappae,npts)',istep,kappae_max
+c     write(6,*) 'chk1,glmin(kappae,npts)',istep,kappae_min
+c     write(6,*) 'chk1,glmax(rhsphie,npts)',istep,rhsphie_max
+c     write(6,*) 'chk1,glmin(rhsphie,npts)',istep,rhsphie_min
+c     write(6,*) 'chk1,glmax(migration,npts)',istep,migration_max
+c     write(6,*) 'chk1,glmin(migration,npts)',istep,migration_min
+c     endif
 
-
+c     if (nid.eq.0) write(6,*) '=== start pnp_poisson_test'
       call pnp_poisson_test
+c     if (nid.eq.0) write(6,*) '=== end pnp_poisson_test'
+
+      call opgrad(gradphie(1,1,1,1,1),gradphie(1,1,1,1,2),
+     &              gradphie(1,1,1,1,3),phie)
+      call opdssum(gradphie(1,1,1,1,1),gradphie(1,1,1,1,2),
+     &              gradphie(1,1,1,1,3))
+      call opcolv(gradphie(1,1,1,1,1),gradphie(1,1,1,1,2),
+     &              gradphie(1,1,1,1,3),binvm1)
 
       ! Calculate migration term for the next time step
       do iion = 1,nion
         ! migration_i = \nabla (z_i c_i F D_i /R/T \nabla phi)
-        call lap_usr2(phie,t(1,1,1,1,iion+1),migration(1,1,1,1,iion))
-        call lap_usr2(t(1,1,1,1,1),t(1,1,1,1,iion+1),
-     &                lapcc(1,1,1,1,iion))  			! lapcc = \nabla (c_i\nabla t)
+        call rzero(tmpa,npts)
         do i = 1,npts
-          mobility = Dcst/(Rcst*t(i,1,1,1,1))
-          coeffT = Qcst*Dcst/(Rcst*t(i,1,1,1,1)*t(i,1,1,1,1))
+          Ti = t(i,1,1,1,1)
+          diffi = diffCoeff(i,1,1,1,iion)
+          mobility = diffi/(Rcst*t(i,1,1,1,1))
+          cni = t(i,1,1,1,iion+1)
+          tmpa(i,1,1,1) = zvalence(iion)*mobility*Fcst*cni
+        enddo
+        call lap_usr2(phie,tmpa,migration(1,1,1,1,iion))
+        call rzero(tmpa,npts)
+        do i = 1,npts
+          Ti = t(i,1,1,1,1)
+          diffi = diffCoeff(i,1,1,1,iion)
+          tmpa(i,1,1,1) = 1/(Ti*Ti)*diffi*t(i,1,1,1,iion)
+        enddo
+        call lap_usr2(t(1,1,1,1,1),tmpa,
+     &                lapcc(1,1,1,1,iion))  			! lapcc = \nabla (c_i D_i/T^2\nabla t)
+        do i = 1,npts
           migration(i,1,1,1,iion) = migration(i,1,1,1,iion)
-     &                   *zvalence(iion)*mobility*Fcst +
-     &                    coeffT*lapcc(1,1,1,1,iion)
+     &                  +Qcst/Rcst*lapcc(i,1,1,1,iion)
         enddo
       enddo
+
+      call dump_ecm_data()
+
+c     kappae_max = glmax(kappae,npts)
+c     kappae_min = glmin(kappae,npts)
+c     rhsphie_max = glmax(rhsphie,npts)
+c     rhsphie_min = glmin(rhsphie,npts)
+c     migration_max = glmax(migration,npts)
+c     migration_min = glmin(migration,npts)
+c     if(nid.eq.0) then
+c     write(6,*) 'chk2,glmax(kappae,npts)',istep,kappae_max
+c     write(6,*) 'chk2,glmin(kappae,npts)',istep,kappae_min
+c     write(6,*) 'chk2,glmax(rhsphie,npts)',istep,rhsphie_max
+c     write(6,*) 'chk2,glmin(rhsphie,npts)',istep,rhsphie_min
+c     write(6,*) 'chk2,glmax(migration,npts)',istep,migration_max
+c     write(6,*) 'chk2,glmin(migration,npts)',istep,migration_min
+c     endif
 
       s1max = glmax(t(1,1,1,1,2),npts)
       s1min = glmin(t(1,1,1,1,2),npts)
@@ -352,7 +572,7 @@ c    &                           iter,E1,E2,E3,C1,C2
       s3min = glmin(t(1,1,1,1,4),npts)
       s4max = glmax(t(1,1,1,1,5),npts)
       s4min = glmin(t(1,1,1,1,5),npts)
-
+      
       if(nid.eq.0) then
        write(6,*) 'scalar max/min : ', s1max,s1min,s2max,
      &      s2min,s3max,s3min,s4max,s4min
@@ -378,9 +598,10 @@ c-----------------------------------------------------------------------
       parameter(Dcst     = 1.1611E-9)
       parameter(Qcst     = 8000.0)
       parameter(vncst    = 1.0)
-      parameter(vkzero   = 0.6E-5)
+      parameter(vkzero   = 0.000006)
+c     parameter(Tzero    = 273.15)
       parameter(Tzero    = 298.15)
-      parameter(Exa      = 14.644)
+      parameter(Exa      = 14644)
       parameter(thetacst = 0.5)
       parameter(Ta       = 360)
       parameter(Tc       = 300)
@@ -388,9 +609,7 @@ c-----------------------------------------------------------------------
       parameter(Vcell    = 0.05)
       parameter(eps      = 1e-14)
       parameter(tolnwton = 1e-8)
-      parameter(vMob     = Dcst/(Rcst*Tcst))
 
-      real ionflux(lx1,ly1,lz1,lelt,nion)
       real Eeq,eta,coi,cri,ti    ! equilibrium potential, overpotential, node concentration + temp
       real totinAnode,totinCathode
       real sintA,sintC,sareaA,sareaC
@@ -400,13 +619,21 @@ c-----------------------------------------------------------------------
       integer countA,countC
       integer npts
       logical onAnode,onCathode
-      common /SALAZAR/ ionflux,kappae,
-     &                 migration,rhsphie,phie,Ea
+
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      real kappae(lx1,ly1,lz1,lelt)
+      real diffCoeff(lx1,ly1,lz1,lelt,nion)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real gradT(lx1,ly1,lz1,lelt,3)
+      real Ea
+      common /SALAZAR/ ionflux,kappae,diffCoeff,
+     &                 migration,rhsphie,phie,Ea,gradT
 
       npts = lx1*ly1*lz1*nelv
 
       ! Loop through boundaries and calculate ion flux i \cdot n
-      write(6,*) 'lelt,nelv,nelt',lelt,nelv,nelt
       countA = 0
       countC = 0
       totinAnode = 0.0
@@ -420,20 +647,23 @@ c-----------------------------------------------------------------------
         do j = j0,j1
         do i = i0,i1 
           coi = t(i,j,k,e,ioxi+1)
-          cor = t(i,j,k,e,ired+1)
+          cri = t(i,j,k,e,ired+1)
           ti  = t(i,j,k,e,1)
-          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cor)   ! equilibrium potential
+          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
           if (onAnode) eta = Eiter-Eeq                 ! overpotential
           if (onCathode) eta = Vcell+Eiter-Eeq
           if (onCathode.or.onAnode) then
+c         ionflux(i,j,k,e,ired) = vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))*
+c    &            (coi*exp(-vncst*Fcst*.5*eta/(Rcst*Ti))-
+c    &             cri*exp(vncst*Fcst*.5*eta/(Rcst*Ti)))
           ionflux(i,j,k,e,ired) = vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))*
-     &            (coi*exp(-vncst*Fcst*(1-thetacst)*eta/(Rcst*Ti))-
-     &             cor*exp(vncst*Fcst*thetacst*eta/(Rcst*Ti)))
+     &            (coi*exp(-vncst*Fcst*.5*eta/(Rcst*Ti))-
+     &             cri*exp(vncst*Fcst*.5*eta/(Rcst*Ti)))
           ionflux(i,j,k,e,ioxi) = -ionflux(i,j,k,e,ired)
-c         write(6,*) 'e,f,coi,cor,ti,Eeq,eta',e,f,coi,cor,ti,Eeq,eta
+c         write(6,*) 'e,f,coi,cri,ti,Eeq,eta',e,f,coi,cri,ti,Eeq,eta
 c    &                ,vncst*Fcst*vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))
 c    &                ,coi*exp(-vncst*Fcst*(1-thetacst)*eta/(Rcst*Ti))
-c    &                ,cor*exp(vncst*Fcst*thetacst*eta/(Rcst*Ti))
+c    &                ,cri*exp(vncst*Fcst*thetacst*eta/(Rcst*Ti))
 c    &                ,ionflux(i,j,k,e,ired),ionflux(i,j,k,e,ioxi)
 c    &                ,onAnode,onCathode
           endif
@@ -552,21 +782,48 @@ c
      $   , t2(lt)
      $   , phi_exact(lt)
       integer ifldpot
+      integer npts
+
+      real migration_max,migration_min
+      real rhsphie_max,rhsphie_min
+      real kappae_max,kappae_min
+      real rhstmp(lx1,ly1,lz1,lelt)
 
       real ionflux(lx1,ly1,lz1,lelt,nion)
       real kappae(lx1,ly1,lz1,lelt)
+      real diffCoeff(lx1,ly1,lz1,lelt,nion)
+      real migration(lx1,ly1,lz1,lelt,nion)
       real rhsphie(lx1,ly1,lz1,lelt)
       real phie(lx1,ly1,lz1,lelt)
-      real migration(lx1,ly1,lz1,lelt,nion)
-      common /SALAZAR/ ionflux,kappae,
-     &                 migration,rhsphie,phie,Ea
+      real gradT(lx1,ly1,lz1,lelt,3)
+      real Ea
+      common /SALAZAR/ ionflux,kappae,diffCoeff,
+     &                 migration,rhsphie,phie,Ea,gradT
+
+      npts = lx1*ly1*lz1*nelt
+
+c     if (nid.eq.0) write(6,*) '=== call pnp_poisson_test'
+c     kappae_max = glmax(kappae,npts)
+c     kappae_min = glmin(kappae,npts)
+c     rhsphie_max = glmax(rhsphie,npts)
+c     rhsphie_min = glmin(rhsphie,npts)
+c     migration_max = glmax(migration,npts)
+c     migration_min = glmin(migration,npts)
+c     if(nid.eq.0) then
+c     write(6,*) 'chk2,glmax(kappae,npts)',istep,kappae_max
+c     write(6,*) 'chk2,glmin(kappae,npts)',istep,kappae_min
+c     write(6,*) 'chk2,glmax(rhsphie,npts)',istep,rhsphie_max
+c     write(6,*) 'chk2,glmin(rhsphie,npts)',istep,rhsphie_min
+c     write(6,*) 'chk2,glmax(migration,npts)',istep,migration_max
+c     write(6,*) 'chk2,glmin(migration,npts)',istep,migration_min
+c     endif
 
       ifldpot = 6
       n = lx1*ly1*lz1*nelt
 
       isd = 1
       imsh = 1
-      maxit = 100
+      maxit = 10000
       idpss(ifldpot-1)=0 ! active solver
       ifield = ifldpot
 
@@ -578,8 +835,24 @@ c
       call Xaddcol3(h2,t2,h1,n) ! h2=h2+t2*h1
       call bcdirsc(phie) ! dirichlet
       call axhelm (t1,phie,h1,h2,imsh,isd)
-	  
-      call setqvol(rhsphie) ! rhs
+
+c     if (nid.eq.0) write(6,*) '=== call pnp_poisson_test,setqvol'
+c     kappae_max = glmax(kappae,npts)
+c     kappae_min = glmin(kappae,npts)
+c     rhsphie_max = glmax(rhsphie,npts)
+c     rhsphie_min = glmin(rhsphie,npts)
+c     migration_max = glmax(migration,npts)
+c     migration_min = glmin(migration,npts)
+c     if(nid.eq.0) then
+c     write(6,*) 'chk2,glmax(kappae,npts)',istep,kappae_max
+c     write(6,*) 'chk2,glmin(kappae,npts)',istep,kappae_min
+c     write(6,*) 'chk2,glmax(rhsphie,npts)',istep,rhsphie_max
+c     write(6,*) 'chk2,glmin(rhsphie,npts)',istep,rhsphie_min
+c     write(6,*) 'chk2,glmax(migration,npts)',istep,migration_max
+c     write(6,*) 'chk2,glmin(migration,npts)',istep,migration_min
+c     endif
+
+      call setqvol(rhsphie,rhstmp) ! rhs
       call col3(t2,rhsphie,bm1,n)	
 	
       call sub2(t2,t1,n)
@@ -596,6 +869,24 @@ c      call col2 (t2,tmask(1,1,1,1,ifldpot-1),n)
 c      ifield = ifldmhd
 c      call hmh_gmres(t2,h1,h2,tmult(1,1,1,1,ifldpot-1),maxit)
 c      call add2(phi,t2,n)
+
+c     if (nid.eq.0) write(6,*) '=== call pnp_poisson_test,hsolve'
+c     kappae_max = glmax(kappae,npts)
+c     kappae_min = glmin(kappae,npts)
+c     rhsphie_max = glmax(rhsphie,npts)
+c     rhsphie_min = glmin(rhsphie,npts)
+c     migration_max = glmax(migration,npts)
+c     migration_min = glmin(migration,npts)
+c     if(nid.eq.0) then
+c     write(6,*) 'chk2,glmax(kappae,npts)',istep,kappae_max
+c     write(6,*) 'chk2,glmin(kappae,npts)',istep,kappae_min
+c     write(6,*) 'chk2,glmax(rhsphie,npts)',istep,rhsphie_max
+c     write(6,*) 'chk2,glmin(rhsphie,npts)',istep,rhsphie_min
+c     write(6,*) 'chk2,glmax(migration,npts)',istep,migration_max
+c     write(6,*) 'chk2,glmin(migration,npts)',istep,migration_min
+c     endif
+
+
 
       ifield = ifldpot
       call hsolve   ('POTE',T1,T2,H1,H2
@@ -619,3 +910,36 @@ c      call add2(phi,t2,n)
       return
       end
 c-----------------------------------------------------------------------
+      subroutine dump_ecm_data
+      include 'SIZE'
+      include 'TOTAL'
+
+      parameter(nion     = 3)
+
+      real ionflux(lx1,ly1,lz1,lelt,nion)
+      real kappae(lx1,ly1,lz1,lelt)
+      real diffCoeff(lx1,ly1,lz1,lelt,nion)
+      real migration(lx1,ly1,lz1,lelt,nion)
+      real rhsphie(lx1,ly1,lz1,lelt)
+      real phie(lx1,ly1,lz1,lelt)
+      real gradT(lx1,ly1,lz1,lelt,3)
+      real Ea
+      common /SALAZAR/ ionflux,kappae,diffCoeff,
+     &                 migration,rhsphie,phie,Ea,gradT
+
+ 
+
+      iastep = param(68)
+      if  (iastep.eq.0) iastep=param(15)   ! same as iostep
+
+      if ( (mod(istep,iastep).eq.0.and.istep.gt.1) .or.lastep.eq.1) then
+        ! for 2d case, vz position is not dumped.
+        ! 
+      call outpost2(phie,kappae,
+     & rhsphie,rhsphie,migration,nion,'ecm')
+
+      endif
+
+      return
+      end
+c---------------------------------------------------------------------
