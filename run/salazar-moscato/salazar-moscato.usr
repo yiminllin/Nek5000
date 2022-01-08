@@ -354,6 +354,7 @@ c     parameter(Tzero    = 298.15)
       npts = lx1*ly1*lz1*nelt
       
 c     if (nid.eq.0) write(6,*) '==== call userchk'
+      if (nid.eq.0) write(6,*) 'Vcell', Vcell
       
       if (istep.eq.0) then
 
@@ -393,17 +394,6 @@ c       write(6,*) 'gradT(11,1,1,400,1)',gradT(11,1,1,400,1)
         enddo
         enddo
 
-c       do i = 1,npts
-c         Ti = t(i,1,1,1,1)
-c         diffCoeff(i,1,1,1,1) = 
-c    &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*5E-11
-c         diffCoeff(i,1,1,1,1) = 
-c    &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*3E-11 
-c         diffCoeff(i,1,1,1,3) = 
-c    &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
-c       enddo
-
-        
         ! Initialize zero flux bc
         do i = 1,nion
           call rzero(ionflux(1,1,1,1,i),npts)
@@ -638,6 +628,7 @@ c     parameter(Tzero    = 298.15)
       real totinAnode,totinCathode
       real sintA,sintC,sareaA,sareaC
       real Eiter
+      real etaa,etac
       integer i,j,k,e,f,c
       integer i0,i1,j0,j1,k0,k1
       integer countA,countC
@@ -673,9 +664,9 @@ c     parameter(Tzero    = 298.15)
           coi = t(i,j,k,e,ioxi+1)
           cri = t(i,j,k,e,ired+1)
           ti  = t(i,j,k,e,1)
-          Eeq = -Rcst*ti/(vncst*Fcst)*log(cri/coi)   ! equilibrium potential
+          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
           if (onAnode) eta = Eiter-Eeq                 ! overpotential
-          if (onCathode) eta = Vcell+Eiter-Eeq
+          if (onCathode) eta = 0.09-Vcell+Eiter-Eeq
           if (onCathode.or.onAnode) then
 c         ionflux(i,j,k,e,ired) = vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))*
 c    &            (coi*exp(-vncst*Fcst*.5*eta/(Rcst*Ti))-
@@ -695,11 +686,11 @@ c    &                ,onAnode,onCathode
         enddo
         enddo
         if (onAnode) then
-          call surface_int(sintA,sareaA,ionflux(1,1,1,1,ired),e,f)
+          call surface_int(sintA,sareaA,ionflux(1,1,1,1,ioxi),e,f)
           totinAnode = totinAnode+sintA*vncst*Fcst
         endif
         if (onCathode) then
-          call surface_int(sintC,sareaC,ionflux(1,1,1,1,ired),e,f)
+          call surface_int(sintC,sareaC,ionflux(1,1,1,1,ioxi),e,f)
           totinCathode = totinCathode+sintC*vncst*Fcst
         endif
       enddo
