@@ -4,7 +4,7 @@ c-----------------------------------------------------------------------
       include 'TOTAL'
       include 'NEKUSE'
       parameter(nion = 3)     
-      parameter(Fcst     = 96485.0)
+      parameter(Fcst     = 96485.3329)
       parameter(Dcst     = 1.1611E-9)
       parameter(Dccst    = 1.957E-9)
 
@@ -167,7 +167,7 @@ c-----------------------------------------------------------------------
       parameter(nion     = 3)
       parameter(ioxi     = 1)
       parameter(ired     = 2)
-      parameter(Fcst     = 96485.0)
+      parameter(Fcst     = 96485.3329)
       parameter(Rcst     = 8.314)
       parameter(Dcst     = 1.1611E-9)
       parameter(Qcst     = 8000.0)
@@ -300,7 +300,7 @@ c-----------------------------------------------------------------------
       parameter(ired     = 2)
       parameter(icou     = 3)
       parameter(ipot     = 4)
-      parameter(Fcst     = 96485.0)
+      parameter(Fcst     = 96485.3329)
       parameter(Rcst     = 8.314)
       parameter(Dcst     = 1.1611E-9)
       parameter(Dccst    = 1.957E-9)
@@ -315,7 +315,7 @@ c     parameter(Tzero    = 298.15)
       parameter(Ta       = 360)
       parameter(Tc       = 300)
       parameter(Tcst     = 330)
-      parameter(Vcell    = 0.05)
+      parameter(Vcell    = 0.025)
       parameter(eps      = 1e-14)
       parameter(tolnwton = 1e-10)
 
@@ -607,7 +607,7 @@ c-----------------------------------------------------------------------
       parameter(ired     = 2)
       parameter(icou     = 3)
       parameter(ipot     = 4)
-      parameter(Fcst     = 96485.0)
+      parameter(Fcst     = 96485.3329)
       parameter(Rcst     = 8.3145)
       parameter(Dcst     = 1.1611E-9)
       parameter(Qcst     = 8000.0)
@@ -620,7 +620,7 @@ c     parameter(Tzero    = 298.15)
       parameter(Ta       = 360)
       parameter(Tc       = 300)
       parameter(Tcst     = 330)
-      parameter(Vcell    = 0.05)
+      parameter(Vcell    = 0.025)       ! TODO: This really should be Eac
       parameter(eps      = 1e-14)
       parameter(tolnwton = 1e-8)
 
@@ -628,12 +628,14 @@ c     parameter(Tzero    = 298.15)
       real totinAnode,totinCathode
       real sintA,sintC,sareaA,sareaC
       real Eiter
+      real Eaeqavg,Eceqavg
       real etaa,etac
       integer i,j,k,e,f,c
       integer i0,i1,j0,j1,k0,k1
       integer countA,countC
       integer npts
       logical onAnode,onCathode
+      real Eeqarr(lx1,ly1,lz1,lelt)
 
       real ionflux(lx1,ly1,lz1,lelt,nion)
       real kappae(lx1,ly1,lz1,lelt)
@@ -647,6 +649,43 @@ c     parameter(Tzero    = 298.15)
      &                 migration,rhsphie,phie,Ea,gradT
 
       npts = lx1*ly1*lz1*nelv
+
+      ! Find average equilibrium potential
+      call rzero(Eeqarr,npts)
+      Eaeqavg = 0.0
+      Eceqavg = 0.0
+      do e = 1,nelv
+      do f = 1,2*ldim
+        call facind(i0,i1,j0,j1,k0,k1,nx1,ny1,nz1,f)
+        onAnode   = ((abs(xm1(1,1,1,e)).lt.eps).and.(f.eq.4))
+        onCathode = ((abs(xm1(nx1,1,1,e)-xLength).lt.eps).and.(f.eq.2))
+        do k = k0,k1
+        do j = j0,j1
+        do i = i0,i1 
+          coi = t(i,j,k,e,ioxi+1)
+          cri = t(i,j,k,e,ired+1)
+          ti  = t(i,j,k,e,1)
+          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
+          if (onCathode.or.onAnode) then
+            Eeqarr(i,j,k,e) = Eeq
+          endif
+        enddo
+        enddo
+        enddo
+        if (onAnode) then
+          call surface_int(sintA,sareaA,Eeqarr,e,f)
+          Eaeqavg = Eaeqavg+sintA
+        endif
+        if (onCathode) then
+          call surface_int(sintC,sareaC,Eeqarr,e,f)
+          Eceqavg = Eceqavg+sintC
+        endif
+      enddo
+      enddo
+
+      Eaeqavg = glsum(Eaeqavg,1)/xLength
+      Eceqavg = glsum(Eceqavg,1)/xLength
+      write(6,*) 'Eeqavg',Eaeqavg,Eceqavg
 
       ! Loop through boundaries and calculate ion flux i \cdot n
       countA = 0
@@ -666,7 +705,13 @@ c     parameter(Tzero    = 298.15)
           ti  = t(i,j,k,e,1)
           Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
           if (onAnode) eta = Eiter-Eeq                 ! overpotential
+c         if (onCathode) eta = Vcell+Eiter-Eeq
           if (onCathode) eta = 0.09-Vcell+Eiter-Eeq
+c         if (onAnode) eta = Eiter-Eaeqavg                 ! overpotential
+c         if (onCathode) eta = 0.09-Vcell-(Eiter-Eaeqavg)
+c         if (onCathode) eta = 0.09-Vcell+(Eiter-Eaeqavg)
+c         if (onCathode) eta = Vcell-0.09+(Eiter-Eaeqavg)
+
           if (onCathode.or.onAnode) then
 c         ionflux(i,j,k,e,ired) = vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))*
 c    &            (coi*exp(-vncst*Fcst*.5*eta/(Rcst*Ti))-
