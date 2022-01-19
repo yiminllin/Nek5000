@@ -30,11 +30,6 @@ c-----------------------------------------------------------------------
       zvalence(ired) = -3 ! reduced
       zvalence(icou) = 1  ! counter
 
-c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
-c    &   .and.(nid.eq.0)) then
-c     write(6,*) '==== call uservp'
-c     endif
-
       udiff = 0.0
       utrans = 0.0
 
@@ -45,23 +40,29 @@ c     endif
         udiff  = 0.6         ! conductivity
         utrans = 5203184.9   ! rho*cp
       elseif (ifield.eq.6) then  ! potential
-c       udiff  = 60.0
-!       udiff  = kappae(i,j,k,e)+1e-7
         Ti = t(i,j,k,e,1)
         diffi = (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10
         mobility = diffi/(Rcst*Ti)
         coeffT = Qcst*diffi/(Rcst*Ti*Ti)
         udiff = 0.0
         do iion = 1,nion
+          if (iion.eq.1) mobility = 1.00*diffi/(Rcst*Ti)
+          if (iion.eq.2) mobility = 1.00*diffi/(Rcst*Ti)
+          if (iion.eq.3) mobility = 1.10*diffi/(Rcst*Ti)
           udiff = udiff + Fcst*Fcst*zvalence(iion)*zvalence(iion)
      &                    *mobility*t(i,1,1,1,iion+1)
         enddo
         utrans = 1.0
       else
         if (istep.ne.0) then
-c       udiff  = diffCoeff(i,j,k,e,ifield-2) 
         Ti = t(i,j,k,e,1)
         udiff = (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10
+        if (ifield.eq.3) udiff = 1.00*
+     &     (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10
+        if (ifield.eq.4) udiff = 1.00*
+     &     (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10
+        if (ifield.eq.5) udiff = 1.10*
+     &     (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10
 
         if (udiff.le.0.0) then
           write(6,*) 'negative',i,j,k,e,udiff
@@ -80,10 +81,6 @@ c       udiff  = diffCoeff(i,j,k,e,ifield-2)
         endif
         endif
       endif
-
-c     write(6,*) 'uservp,glmax(kappae,npts)',glmax(kappae,npts)
-c     write(6,*) 'uservp,glmin(kappae,npts)',glmin(kappae,npts)
-c     write(6,*) 'uservp,Dcst',Dcst
 
       return
       end
@@ -126,10 +123,6 @@ c-----------------------------------------------------------------------
       e = gllel(eg)
       npts = lx1*ly1*lz1*nelt
       qvol = 0.0
-c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
-c    &   .and.(nid.eq.0)) then
-c     write(6,*) '==== call userq'
-c     endif
 
       if ((ifield.gt.2).and.(ifield.lt.6)) then
         qvol = migration(i,j,k,e,ifield-2)
@@ -139,18 +132,6 @@ c     endif
         qvol = rhsphie(i,j,k,e)
       endif
       
-c     migration_max = glmax(migration,npts)
-c     migration_min = glmin(migration,npts)
-c     rhsphie_max = glmax(rhsphie,npts)
-c     rhsphie_min = glmin(rhsphie,npts)
-c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
-c    &   .and.(nid.eq.0)) then
-c     write(6,*) 'userq,glmax(migration,npts)',istep,migration_max
-c     write(6,*) 'userq,glmin(migration,npts)',istep,migration_min
-c     write(6,*) 'userq,glmax(rhsphie,npts)',istep,rhsphie_max
-c     write(6,*) 'userq,glmin(rhsphie,npts)',istep,rhsphie_min
-c     endif
-
       return
       end
 c-----------------------------------------------------------------------
@@ -167,6 +148,7 @@ c-----------------------------------------------------------------------
       parameter(nion     = 3)
       parameter(ioxi     = 1)
       parameter(ired     = 2)
+      parameter(icou     = 3)
       parameter(Fcst     = 96485.3329)
       parameter(Rcst     = 8.314)
       parameter(Dcst     = 1.1611E-9)
@@ -174,10 +156,13 @@ c-----------------------------------------------------------------------
       parameter(eps      = 1e-14)
 
       integer i,j,k,f,e,eg,idf
-      integer npts
-      logical onAnode,onCathode
+      integer npts,iion
+      logical onAnode,onCathode,onTop,onBottom
       real flux_max,flux_min
       real Ti,diffi,gradTi,coeffi
+      real mobility,kappae_v
+      real zvalence(3)
+      real dcdn,coeffT
 
       real ionflux(lx1,ly1,lz1,lelt,nion)
       real kappae(lx1,ly1,lz1,lelt)
@@ -192,15 +177,10 @@ c-----------------------------------------------------------------------
 
       npts = lx1*ly1*lz1*nelt
       e = gllel(eg)
-c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
-c    &   .and.(nid.eq.0)) then
-c     write(6,*) '==== call userbc'
-c     endif
 
-c     ux   = 0.0
-c     uy   = 0.0
-c     uz   = 0.0
-c     temp = 0.0
+      zvalence(ioxi) = -4 ! oxidized
+      zvalence(ired) = -3 ! reduced
+      zvalence(icou) = 1  ! counter
       flux = 0.0
 
       onAnode   = ((abs(xm1(1,1,1,e)).lt.eps).and.(f.eq.4))
@@ -216,27 +196,12 @@ c     temp = 0.0
       if (onCathode) flux = ionflux(i,j,k,e,ired)
       endif
 
-c     flux_max = glmax(ionflux(1,1,1,1,ired),npts)
-c     flux_min = glmin(ionflux(1,1,1,1,ired),npts)
-c     if(nid.eq.0) then
-c      write(6,*) 'userbc:Red flux max/min : ', flux_max,'/',flux_min
-c     endif
-c     flux_max = glmax(ionflux(1,1,1,1,ioxi),npts)
-c     flux_min = glmin(ionflux(1,1,1,1,ioxi),npts)
-c     if(nid.eq.0) then
-c      write(6,*) 'userbc:Oxi flux max/min : ', flux_max,'/',flux_min
-c     endif
-
       end
 c-----------------------------------------------------------------------
       subroutine useric (ix,iy,iz,ieg)
       include 'SIZE'
       include 'TOTAL'
       include 'NEKUSE'
-c     if ((i.eq.1).and.(j.eq.1).and.(k.eq.1).and.(e.eq.1)
-c    &   .and.(nid.eq.0)) then
-c     write(6,*) '==== call useric'
-c     endif
 
       if (ifield.eq.3) then ! oxidized
         temp = 400.0
@@ -307,8 +272,7 @@ c-----------------------------------------------------------------------
       parameter(Qcst     = 8000.0)
       parameter(vncst    = 1.0)
       parameter(vkzero   = 0.000006)
-      parameter(Tzero    = 273.15)
-c     parameter(Tzero    = 298.15)
+      parameter(Tzero    = 298.15)
       parameter(Exa      = 14644)
 
       parameter(thetacst = 0.5)
@@ -337,6 +301,7 @@ c     parameter(Tzero    = 298.15)
       real flux_max,flux_min
       real gradT_max,gradT_min
       real gradphie_max,gradphie_min
+      real phie_max,phie_min,t5_max,t5_min
       real s1max,s1min,s2max,s2min,s3max,s3min
       real s4max,s4min
       real phiea_avg,phiec_avg
@@ -393,6 +358,12 @@ c       write(6,*) 'gradT(11,1,1,400,1)',gradT(11,1,1,400,1)
           Ti = t(i,1,1,1,1)
           diffCoeff(i,1,1,1,iion) = 
      &             (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+          if (iion.eq.1) diffCoeff(i,1,1,1,iion) = 
+     &             1.00*(62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+          if (iion.eq.2) diffCoeff(i,1,1,1,iion) = 
+     &             1.00*(62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+          if (iion.eq.3) diffCoeff(i,1,1,1,iion) = 
+     &             1.10*(62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
         enddo
         enddo
 
@@ -405,12 +376,19 @@ c       write(6,*) 'gradT(11,1,1,400,1)',gradT(11,1,1,400,1)
         ! Initial BV variables
         Ea = -0.027
       endif
+
       ! Initialize Diffusion coefficients (Assume fixed temperature profile)
       do iion = 1,nion
       do i = 1,npts
         Ti = t(i,1,1,1,1)
         diffCoeff(i,1,1,1,iion) = 
      &           (62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+          if (iion.eq.1) diffCoeff(i,1,1,1,iion) = 
+     &             1.00*(62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+          if (iion.eq.2) diffCoeff(i,1,1,1,iion) = 
+     &             1.00*(62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
+          if (iion.eq.3) diffCoeff(i,1,1,1,iion) = 
+     &             1.10*(62.66-0.5336*Ti+1.1482E-3*Ti**2.0)*1E-10 
       enddo
       enddo
 
@@ -420,7 +398,7 @@ c       write(6,*) 'gradT(11,1,1,400,1)',gradT(11,1,1,400,1)
 
       ! Bulter-Volmer electrokinectics with Secant iterations
       niter = 1000
-      E1 = Ea
+      E1 = Ea                    ! TODO: Ea shall really be Eaeq now
       E2 = Ea+0.0001
       call total_current(C1,E1)
       call total_current(C2,E2)
@@ -530,36 +508,6 @@ c     if (nid.eq.0) write(6,*) '=== start pnp_poisson_test'
       call pnp_poisson_test
 c     if (nid.eq.0) write(6,*) '=== end pnp_poisson_test'
 
-      call opgrad(gradphie(1,1,1,1,1),gradphie(1,1,1,1,2),
-     &              gradphie(1,1,1,1,3),phie)
-      call opdssum(gradphie(1,1,1,1,1),gradphie(1,1,1,1,2),
-     &              gradphie(1,1,1,1,3))
-      call opcolv(gradphie(1,1,1,1,1),gradphie(1,1,1,1,2),
-     &              gradphie(1,1,1,1,3),binvm1)
-
-      ! Find average potential drop
-      phiea_avg = 0.0
-      phiec_avg = 0.0
-      do e = 1,nelv
-      do f = 1,2*ldim
-        call facind(i0,i1,j0,j1,k0,k1,nx1,ny1,nz1,f)
-        onAnode   = ((abs(xm1(1,1,1,e)).lt.eps).and.(f.eq.4))
-        onCathode = ((abs(xm1(nx1,1,1,e)-xLength).lt.eps).and.(f.eq.2))
-        if (onAnode) then
-          call surface_int(sintA,sareaA,phie,e,f)
-          phiea_avg = phiea_avg + sintA
-        endif
-        if (onCathode) then
-          call surface_int(sintC,sareaC,phie,e,f)
-          phiec_avg = phiec_avg + sintC
-        endif
-      enddo
-      enddo
-
-      phiea_avg = glsum(phiea_avg,1)/xLength
-      phiec_avg = glsum(phiec_avg,1)/xLength
-      write(6,*) 'phie_avg',phiea_avg,phiec_avg
-
       ! Calculate migration term for the next time step
       do iion = 1,nion
         ! migration_i = \nabla (z_i c_i F D_i /R/T \nabla phi)
@@ -587,21 +535,6 @@ c    &                  +Qcst/Rcst*lapcc(i,1,1,1,iion)
       enddo
 
       call dump_ecm_data()
-
-c     kappae_max = glmax(kappae,npts)
-c     kappae_min = glmin(kappae,npts)
-c     rhsphie_max = glmax(rhsphie,npts)
-c     rhsphie_min = glmin(rhsphie,npts)
-c     migration_max = glmax(migration,npts)
-c     migration_min = glmin(migration,npts)
-c     if(nid.eq.0) then
-c     write(6,*) 'chk2,glmax(kappae,npts)',istep,kappae_max
-c     write(6,*) 'chk2,glmin(kappae,npts)',istep,kappae_min
-c     write(6,*) 'chk2,glmax(rhsphie,npts)',istep,rhsphie_max
-c     write(6,*) 'chk2,glmin(rhsphie,npts)',istep,rhsphie_min
-c     write(6,*) 'chk2,glmax(migration,npts)',istep,migration_max
-c     write(6,*) 'chk2,glmin(migration,npts)',istep,migration_min
-c     endif
 
       s1max = glmax(t(1,1,1,1,2),npts)
       s1min = glmin(t(1,1,1,1,2),npts)
@@ -638,8 +571,9 @@ c-----------------------------------------------------------------------
       parameter(Qcst     = 8000.0)
       parameter(vncst    = 1.0)
       parameter(vkzero   = 0.000006)
-      parameter(Tzero    = 273.15)
-c     parameter(Tzero    = 298.15)
+      parameter(Ezero    = 0.3407)
+      parameter(deltaS   = -147.8)
+      parameter(Tzero    = 298.15)
       parameter(Exa      = 14644)
       parameter(thetacst = 0.5)
       parameter(Ta       = 360)
@@ -657,6 +591,7 @@ c     parameter(Tzero    = 298.15)
       real Eaeqavgavg,Eceqavgavg
       real coaavg,craavg,cocavg,crcavg
       real etaa,etac
+      real phiea_avg,phiec_avg
       integer i,j,k,e,f,c
       integer i0,i1,j0,j1,k0,k1
       integer countA,countC
@@ -698,7 +633,11 @@ c     parameter(Tzero    = 298.15)
           coi = t(i,j,k,e,ioxi+1)
           cri = t(i,j,k,e,ired+1)
           ti  = t(i,j,k,e,1)
-          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
+c         if (onAnode) Eeq = Ezero+(Ta-Tzero)*deltaS/Fcst +          ! TODO: this really should be E now
+c    &                       Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
+c         if (onCathode) Eeq = Ezero+(Tc-Tzero)*deltaS/Fcst + 
+c    &                       Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
+          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)
           if (onCathode.or.onAnode) then
             Eeqarr(i,j,k,e) = Eeq
           endif
@@ -732,9 +671,31 @@ c     parameter(Tzero    = 298.15)
       crcavg = glsum(crcavg,1)/xLength
       Eaeqavgavg = Rcst*360.0/(vncst*Fcst)*log(coaavg/craavg)
       Eceqavgavg = Rcst*300.0/(vncst*Fcst)*log(cocavg/crcavg)
-      write(6,*) 'Eeqavg',Eaeqavg,Eceqavg
-      write(6,*) 'coaavg,craavg,cocavg,crcavg,Eeqavgavg',
-     &            coaavg,craavg,cocavg,crcavg,Eaeqavgavg,Eceqavgavg
+      if (nid.eq.0) write(6,*) 'Eeqavg',Eaeqavg,Eceqavg,
+     &                          Eaeqavgavg,Eceqavgavg
+
+      ! Find average potential drop
+      phiea_avg = 0.0
+      phiec_avg = 0.0
+      do e = 1,nelv
+      do f = 1,2*ldim
+        call facind(i0,i1,j0,j1,k0,k1,nx1,ny1,nz1,f)
+        onAnode   = ((abs(xm1(1,1,1,e)).lt.eps).and.(f.eq.4))
+        onCathode = ((abs(xm1(nx1,1,1,e)-xLength).lt.eps).and.(f.eq.2))
+        if (onAnode) then
+          call surface_int(sintA,sareaA,phie,e,f)
+          phiea_avg = phiea_avg + sintA
+        endif
+        if (onCathode) then
+          call surface_int(sintC,sareaC,phie,e,f)
+          phiec_avg = phiec_avg + sintC
+        endif
+      enddo
+      enddo
+
+      phiea_avg = glsum(phiea_avg,1)/xLength
+      phiec_avg = glsum(phiec_avg,1)/xLength
+      write(6,*) 'phie_avg',phiea_avg,phiec_avg
 
       ! Loop through boundaries and calculate ion flux i \cdot n
       countA = 0
@@ -752,15 +713,16 @@ c     parameter(Tzero    = 298.15)
           coi = t(i,j,k,e,ioxi+1)
           cri = t(i,j,k,e,ired+1)
           ti  = t(i,j,k,e,1)
-          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
-          if (onAnode) eta = Eiter-Eeq                 ! overpotential
-c         if (onCathode) eta = Vcell+Eiter-Eeq
-          if (onCathode) eta = 0.09-Vcell+Eiter-Eeq
-c         if (onAnode) eta = Eiter-Eaeqavg                 ! overpotential
-c         if (onCathode) eta = 0.09-Vcell-(Eiter-Eaeqavg)
-c         if (onCathode) eta = 0.09-Vcell+(Eiter-Eaeqavg)
-c         if (onCathode) eta = Vcell-0.09+(Eiter-Eaeqavg)
-c         if (onCathode) eta = Vcell-0.09-(Eiter-Eaeqavg)
+          ! 144.727
+c         if (onAnode) Eeq = Ezero+(Ta-Tzero)*deltaS/Fcst +          ! TODO: this really should be E now
+c    &                       Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
+c         if (onCathode) Eeq = Ezero+(Tc-Tzero)*deltaS/Fcst + 
+c    &                       Rcst*ti/(vncst*Fcst)*log(coi/cri)   ! equilibrium potential
+          Eeq = Rcst*ti/(vncst*Fcst)*log(coi/cri)
+c         if (onAnode) eta = Eiter-Eeq                 ! overpotential
+c         if (onCathode) eta = 0.09-Vcell+Eiter-Eeq
+          if (onAnode) eta = -Eiter+Eeq                 ! overpotential
+          if (onCathode) eta = 0.09-Vcell-Eiter+Eeq
 
           if (onCathode.or.onAnode) then
 c         ionflux(i,j,k,e,ired) = vkzero*exp(Exa/Rcst*(1/Tzero-1/Ti))*
@@ -885,6 +847,8 @@ c
 
       parameter(lt       =lx1*ly1*lz1*lelt)
       parameter(nion     = 3)
+      parameter(eps      = 1e-14)
+      parameter(xLength  = 0.001)
 
       real h1(lt)
      $   , h2(lt)
@@ -892,13 +856,16 @@ c
      $   , t2(lt)
      $   , phi_exact(lt)
       integer ifldpot
-      integer npts
+      integer npts,e,f
 
       real migration_max,migration_min
       real rhsphie_max,rhsphie_min
       real phie_max,phie_min
       real kappae_max,kappae_min
       real rhstmp(lx1,ly1,lz1,lelt)
+      real phiea_avg,phiec_avg
+      real sintA,sintC,sareaA,sareaC
+      logical onAnode,onCathode
 
       real ionflux(lx1,ly1,lz1,lelt,nion)
       real kappae(lx1,ly1,lz1,lelt)
