@@ -37,7 +37,7 @@ c-----------------------------------------------------------------------
       include 'NEKUSE'
 
       parameter(g = 9.81)
-      parameter(rho_0 = 1094.6)
+      parameter(rho_0 = 1027.94)
       real tempe,density
 
       integer e
