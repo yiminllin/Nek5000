@@ -1,0 +1,132 @@
+c-----------------------------------------------------------------------
+      subroutine uservp (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      integer i,j,k,e,eg
+      real tl,rho,nu_visc,mu_visc,Cp,cond
+     
+      e = gllel(eg)
+
+      udiff  = 0.0
+      utrans = 0.0
+      tl = temp
+
+      rho = 870.0 + 1.3306*tl - 0.0027413*tl**2.0            ! kg/m3
+      nu_visc = exp(-5.258 - 1642.8/tl + 5.4386e5/tl**2.0)  ! cm2/s
+      nu_visc = nu_visc*1e-4
+      mu_visc = nu_visc*rho
+      Cp = 4187.0
+      cond = 0.6
+
+      if(ifield.eq.1) then
+        udiff = mu_visc            ! mu
+        utrans = rho               ! rho
+      elseif(ifield.eq.2) then
+        udiff = cond               ! kappa
+        utrans = rho*Cp            ! rhoCp
+      endif       
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userf  (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      parameter(g = 9.81)
+      parameter(rho_0 = 1094.6)
+      real tempe,density
+
+      integer e
+      e = gllel(ieg)
+
+      tempe = t(ix,iy,iz,e,1)
+      density = 870.0 + 1.3306*tl - 0.0027413*tl**2.0            ! kg/m3
+      ffx  = 0.
+      ffy = g*(rho_0-density)/rho_0
+c     ffy  = 0.0
+      ffz  = 0.
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userq  (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userbc (ix,iy,iz,iside,ieg)
+      include 'SIZE'
+      include 'TSTEP'
+      include 'INPUT'
+      include 'NEKUSE'
+
+      parameter(eps      = 1e-16)
+      
+      ux=0.
+      uy=0.
+      uz=0.
+      if (abs(y).lt.eps) temp=350.55
+      if (abs(y-0.001).lt.eps) temp=278.55
+      
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine useric (ix,iy,iz,ieg)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      ux=0.0
+      uy=0.0
+      uz=0.0
+      temp = (350.55+278.55)/2
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      idpss(2) = -1
+      idpss(3) = -1
+      idpss(4) = -1
+      idpss(5) = -1
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat3
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      do iip=1,ldimt1
+         ifpsco(iip) = .true.
+         iffilter(iip) = .true.
+      enddo
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat2
+      include 'SIZE'
+      include 'TOTAL'
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userchk
+
+      include 'SIZE'  
+      include 'TOTAL'
+
+      return
+      end
