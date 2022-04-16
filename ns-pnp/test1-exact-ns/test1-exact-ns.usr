@@ -1,0 +1,241 @@
+c-----------------------------------------------------------------------
+      subroutine exactsol(uu,vv,pp,tt,npts)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      
+      integer npts,i 
+      real uu(nx1,ny1,nz1,nelt),vv(nx1,ny1,nz1,nelt)
+      real pp(nx2,ny2,nz2,nelt)
+      real tmpu,tmpv,tmpp
+      real xx,yy,tt
+      
+      do e = 1,nelv
+      do i = 1,nx1
+      do j = 1,ny1
+      do k = 1,nz1
+        xx = xm1(i,j,k,e)
+        yy = ym1(i,j,k,e)
+        call exactsol_i(uu(i,j,k,e),vv(i,j,k,e),pp(i,j,k,e),tt,xx,yy)
+      enddo
+      enddo
+      enddo
+      enddo
+      
+      end
+c-----------------------------------------------------------------------
+      subroutine exactsol_i(ui,vi,pri,tt,xx,yy)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      
+      integer i,j,k,e
+      real ui,vi,pri
+      real xx,yy,tt
+
+      ui  =  sin(2*pi*xx)*cos(2*pi*yy)*sin(tt)
+      vi  = -cos(2*pi*xx)*sin(2*pi*yy)*sin(tt)
+      pri =  sin(pi*xx)*sin(pi*yy)*sin(tt)
+
+      end
+c-----------------------------------------------------------------------
+      subroutine uservp(i,j,k,eg) ! set variable properties
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+
+      integer i,j,k,e,eg
+      e = gllel(eg)
+
+      udiff  = 1.0
+      utrans = 1.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userf(i,j,k,eg) ! set acceleration term
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      integer i,j,k,e,eg
+      real xx,yy,tt
+      real ct,st,spx,cpx,stpx,ctpx
+      real spy,cpy,stpy,ctpy
+      real c1ex
+
+      e  = gllel(eg)
+      xx = xm1(i,j,k,e)
+      yy = ym1(i,j,k,e)
+      tt = time
+
+      ct   = cos(tt)
+      st   = sin(tt)
+      spx  = sin(pi*xx)
+      cpx  = cos(pi*xx)
+      stpx = sin(2*pi*xx)
+      ctpx = cos(2*pi*xx)
+      spy  = sin(pi*yy)
+      cpy  = cos(pi*yy)
+      stpy = sin(2*pi*yy)
+      ctpy = cos(2*pi*yy)
+      exc1 = 1+1.0/(2*pi)*ctpx*ctpy*st
+
+      ffx =  ct*stpx*ctpy
+     &      +8*pi**2*st*stpx*ctpy
+     &      +2*pi*st**2*ctpx*stpx
+     &      +pi*st*cpx*spy
+      ffy = -ct*ctpx*stpy
+     &      -8*pi**2*st*ctpx*stpy
+     &      +2*pi*st**2*ctpy*stpy
+     &      +pi*st*spx*cpy
+     &      +exc1-exc1                  ! TODO: replace -exc1 by the actual concentration c1
+      ffz = 0.0
+
+      end
+c-----------------------------------------------------------------------
+      subroutine userq(i,j,k,eg) ! set source term
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'	  
+
+      integer i,j,k,e,eg
+
+      e = gllel(eg)
+
+      qvol   = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userbc(i,j,k,f,eg) ! set up boundary conditions
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE' 
+
+      common /exacu/ ue(lx1,ly1,lz1,lelt),ve(lx1,ly1,lz1,lelt)
+      common /exacp/ pe(lx2,ly2,lz2,lelt)
+      common /exacd/ ud(lx1,ly1,lz1,lelt),vd(lx1,ly1,lz1,lelt)
+     $              ,pd(lx2,ly2,lz2,lelt)
+      common /exacg/ xo(lx1,ly1,lz1,lelt),yo(lx1,ly1,lz1,lelt),
+     $               zo(lx1,ly1,lz1,lelt)
+      
+      real tmppri,xx,yy
+      integer i,j,k,f,e,eg,npts
+      npts = nx1*ny1*nz1*nelv
+      e    = gllel(eg)
+      
+      xx = xm1(i,j,k,e)
+      yy = ym1(i,j,k,e)
+      call exactsol_i(ux,uy,tmppri,time,xx,yy)
+      uz   = 0.0
+      temp = 0.0
+      flux = 0.0
+	 
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine useric(i,j,k,eg) ! set up initial conditions
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      integer i,j,k,e,eg
+      real xx,yy
+
+      e  = gllel(eg)
+      xx = xm1(i,j,k,e)
+      yy = ym1(i,j,k,e)
+
+      ux   = 0.0
+      uy   = 0.0
+      uz   = 0.0
+      temp = 0.0
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat   ! This routine to modify element vertices
+      include 'SIZE'
+      include 'TOTAL'
+ 
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat3
+      include 'SIZE'
+      include 'TOTAL'
+      
+      ifheat = .false.
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine usrdat2
+      include 'SIZE'
+      include 'TOTAL'
+      
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine userchk
+      include 'SIZE'
+      include 'TOTAL'
+      include 'NEKUSE'
+      
+      common /exacu/ ue(lx1,ly1,lz1,lelt),ve(lx1,ly1,lz1,lelt)
+      common /exacp/ pe(lx2,ly2,lz2,lelt)
+      common /exacd/ ud(lx1,ly1,lz1,lelt),vd(lx1,ly1,lz1,lelt)
+     $              ,pd(lx2,ly2,lz2,lelt)
+      common /exacg/ xo(lx1,ly1,lz1,lelt),yo(lx1,ly1,lz1,lelt),
+     $               zo(lx1,ly1,lz1,lelt)
+      
+      integer npts,npts2
+
+      ifield = 1
+      npts  = nx1*ny1*nz1*nelv
+      npts2 = nx2*ny2*nz2*nelv
+
+      call exactsol(ue,ve,pe,time,npts)
+
+      if (istep.eq.0) call outpost(ue,ve,vx,pe,t,'   ')
+
+      call sub3    (ud,ue,vx,npts)
+      call sub3    (vd,ve,vy,npts)
+      call sub3    (pd,pe,pr,npts2)
+      ! TODO: Shift exact pressure by a constant
+      call cadd    (pe,-pd(1,1,1,1),npts2)
+      call sub3    (pd,pe,pr,npts2)
+
+
+      if (istep.eq.nsteps) call outpost(ud,vd,vx,pd,t,'err')
+
+      umx = glamax(vx,npts)
+      vmx = glamax(vy,npts)
+      pmx = glamax(pr,npts2)
+      uex = glamax(ue,npts)
+      vex = glamax(ve,npts)
+      pex = glamax(pe,npts2)
+      udx = glamax(ud,npts)
+      vdx = glamax(vd,npts)
+      pdx = glamax(pd,npts2)
+
+      unm = gl2norm(vx,npts)
+      vnm = gl2norm(vy,npts)
+      pnm = gl2norm(pd,npts)
+
+      if (nid.eq.0) then
+         write(6,11) istep,time,udx,umx,unm,'  X err'
+         write(6,11) istep,time,vdx,vmx,vnm,'  Y err'
+         write(6,12) istep,time,pdx,pmx,pnm,'                P err'
+   11    format(i5,1p4e14.6,a7)
+   12    format(i5,1p4e14.6,a21)
+      endif  
+      
+      if (istep.le.5) then                   ! Use exact solution to bootstrap
+        call copy(vx,ue,npts)
+        call copy(vy,ve,npts)
+        call copy(pr,pe,npts2)
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
