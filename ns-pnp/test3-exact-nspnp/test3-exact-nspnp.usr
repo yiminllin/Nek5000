@@ -33,14 +33,19 @@ c-----------------------------------------------------------------------
       integer i,j,k,e
       real ui,vi,pri,ci
       real xx,yy,tt
+      real a0,ac,bcc,au,ap,bp
 
-      ! ui  = 0.0
-      ! vi  = 0.0
-      ! pri = 0.0
-      ui  =  sin(2*pi*xx)*cos(2*pi*yy)*sin(tt)
-      vi  = -cos(2*pi*xx)*sin(2*pi*yy)*sin(tt)
-      pri =  sin(pi*xx)*sin(pi*yy)*sin(tt)
-      ci  =  1+1/(2*pi)*cos(2*pi*xx)*cos(2*pi*yy)*sin(tt)
+      a0  = 0.5
+      ac  = 3.0
+      bcc = 4.0
+      au  = 3.5
+      ap  = 4.0
+      bp  = 3.0
+
+      ui  =  sin(tt)*sin(au*pi*xx)*cos(au*pi*yy)
+      vi  = -sin(tt)*cos(au*pi*xx)*sin(au*pi*yy)
+      pri =  sin(tt)*sin(ap*pi*xx)*sin(bp*pi*yy)
+      ci  =  1.0 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy)
 
       end
 c-----------------------------------------------------------------------
@@ -67,34 +72,36 @@ c-----------------------------------------------------------------------
       real ct,st,spx,cpx,stpx,ctpx
       real spy,cpy,stpy,ctpy
       real c1ex
+      real a0,ac,bcc,au,ap,bp
+
+      a0  = 0.5
+      ac  = 3.0
+      bcc = 4.0
+      au  = 3.5
+      ap  = 4.0
+      bp  = 3.0
 
       e  = gllel(eg)
       xx = xm1(i,j,k,e)
       yy = ym1(i,j,k,e)
       tt = time
 
-      ct   = cos(tt)
-      st   = sin(tt)
-      spx  = sin(pi*xx)
-      cpx  = cos(pi*xx)
-      stpx = sin(2*pi*xx)
-      ctpx = cos(2*pi*xx)
-      spy  = sin(pi*yy)
-      cpy  = cos(pi*yy)
-      stpy = sin(2*pi*yy)
-      ctpy = cos(2*pi*yy)
-      exc1 = 1+1.0/(2*pi)*ctpx*ctpy*st
-
-      ffx =  ct*stpx*ctpy
-     &      +8*pi**2*st*stpx*ctpy
-     &      +2*pi*st**2*ctpx*stpx
-     &      +pi*st*cpx*spy
-      ffy = -ct*ctpx*stpy
-     &      -8*pi**2*st*ctpx*stpy
-     &      +2*pi*st**2*ctpy*stpy
-     &      +pi*st*spx*cpy
-     &      +exc1-t(i,j,k,e,1)
-      ffz = 0.0
+      exc1 = 1.0 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy)
+      ffx  = cos(tt)*sin(au*pi*xx)*cos(au*pi*yy) 
+     &     + ap*pi*sin(tt)*cos(ap*pi*xx)*sin(bp*pi*yy) + au*pi*
+     &     (sin(tt)**2)*(cos(au*pi*yy)**2)*cos(au*pi*xx)*sin(au*pi*xx)
+     &     + 2*(au**2)*(pi**2)*sin(tt)*sin(au*pi*xx)*cos(au*pi*yy) 
+     &     + au*pi*(sin(tt)**2)*(sin(au*pi*yy)**2)*cos(au*pi*xx)
+     &     *sin(au*pi*xx)
+      ffy  = 1.0 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
+     &     + bp*pi*sin(tt)*sin(ap*pi*xx)*cos(bp*pi*yy) 
+     &     + au*pi*(sin(tt)**2)*(cos(au*pi*xx)**2)*cos(au*pi*yy)
+     &     *sin(au*pi*yy) + au*pi*(sin(tt)**2)*(sin(au*pi*xx)**2)
+     &     *cos(au*pi*yy)*sin(au*pi*yy) - cos(tt)*cos(au*pi*xx)
+     &     *sin(au*pi*yy) - 2*(au**2)*(pi**2)*sin(tt)*cos(au*pi*xx)
+     &     *sin(au*pi*yy)
+     &     - t(i,j,k,e,1)
+      ffz  = 0.0
 
       end
 c-----------------------------------------------------------------------
@@ -104,16 +111,27 @@ c-----------------------------------------------------------------------
       include 'NEKUSE'	  
 
       integer i,j,k,e,eg
-      real xx,yy
+      real xx,yy,tt
+      real a0,ac,bcc,au,ap,bp
 
+      a0  = 0.5
+      ac  = 3.0
+      bcc = 4.0
+      au  = 3.5
+      ap  = 4.0
+      bp  = 3.0
+ 
       e = gllel(eg)
       xx = xm1(i,j,k,e)
       yy = ym1(i,j,k,e)
+      tt = time
 
-      qvol = 1/(2*pi)*cos(time)*cos(2*pi*xx)*cos(2*pi*yy)
-     &      +4*pi*sin(time)*cos(2*pi*xx)*cos(2*pi*yy)
-     &      -(sin(time)*sin(2*pi*xx)*cos(2*pi*yy))**2
-     &      +(sin(time)*sin(2*pi*yy)*cos(2*pi*xx))**2
+      qvol = a0*cos(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
+     &     + a0*(ac**2)*(pi**2)*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
+     &     + a0*(bcc**2)*(pi**2)*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
+     &     + a0*bcc*pi*(sin(tt)**2)*cos(ac*pi*xx)*cos(au*pi*xx)
+     &     *sin(au*pi*yy)*sin(bcc*pi*yy) - a0*ac*pi*(sin(tt)**2)
+     &     *sin(ac*pi*xx)*sin(au*pi*xx)*cos(au*pi*yy)*cos(bcc*pi*yy)
 
       return
       end
