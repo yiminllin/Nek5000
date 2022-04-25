@@ -33,19 +33,13 @@ c-----------------------------------------------------------------------
       integer i,j,k,e
       real ui,vi,pri,ci
       real xx,yy,tt
-      real a0,ac,bcc,au,ap,bp
-
-      a0  = 0.5
-      ac  = 3.0
-      bcc = 4.0
-      au  = 3.5
-      ap  = 4.0
-      bp  = 3.0
+      real a1,a0,ac,bcc,au,ap,bp
+      common /excoeff/ a1,a0,ac,bcc,au,ap,bp
 
       ui  =  sin(tt)*sin(au*pi*xx)*cos(au*pi*yy)
       vi  = -sin(tt)*cos(au*pi*xx)*sin(au*pi*yy)
       pri =  sin(tt)*sin(ap*pi*xx)*sin(bp*pi*yy)
-      ci  =  1.0 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy)
+      ci  =  a1 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy)
 
       end
 c-----------------------------------------------------------------------
@@ -72,36 +66,33 @@ c-----------------------------------------------------------------------
       real ct,st,spx,cpx,stpx,ctpx
       real spy,cpy,stpy,ctpy
       real c1ex
-      real a0,ac,bcc,au,ap,bp
-
-      a0  = 0.5
-      ac  = 3.0
-      bcc = 4.0
-      au  = 3.5
-      ap  = 4.0
-      bp  = 3.0
+      real a1,a0,ac,bcc,au,ap,bp
+      common /excoeff/ a1,a0,ac,bcc,au,ap,bp
 
       e  = gllel(eg)
       xx = xm1(i,j,k,e)
       yy = ym1(i,j,k,e)
       tt = time
 
-      exc1 = 1.0 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy)
-      ffx  = cos(tt)*sin(au*pi*xx)*cos(au*pi*yy) 
-     &     + ap*pi*sin(tt)*cos(ap*pi*xx)*sin(bp*pi*yy) + au*pi*
-     &     (sin(tt)**2)*(cos(au*pi*yy)**2)*cos(au*pi*xx)*sin(au*pi*xx)
-     &     + 2*(au**2)*(pi**2)*sin(tt)*sin(au*pi*xx)*cos(au*pi*yy) 
-     &     + au*pi*(sin(tt)**2)*(sin(au*pi*yy)**2)*cos(au*pi*xx)
-     &     *sin(au*pi*xx)
-      ffy  = 1.0 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
-     &     + bp*pi*sin(tt)*sin(ap*pi*xx)*cos(bp*pi*yy) 
-     &     + au*pi*(sin(tt)**2)*(cos(au*pi*xx)**2)*cos(au*pi*yy)
-     &     *sin(au*pi*yy) + au*pi*(sin(tt)**2)*(sin(au*pi*xx)**2)
-     &     *cos(au*pi*yy)*sin(au*pi*yy) - cos(tt)*cos(au*pi*xx)
-     &     *sin(au*pi*yy) - 2*(au**2)*(pi**2)*sin(tt)*cos(au*pi*xx)
-     &     *sin(au*pi*yy)
-     &     - t(i,j,k,e,1)
-      ffz  = 0.0
+      exc1 = a1 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy)
+      
+      ffx = cos(tt)*sin(au*pi*xx)*cos(au*pi*yy) 
+     &    + ap*pi*sin(tt)*cos(ap*pi*xx)*sin(bp*pi*yy) 
+     &    + au*pi*(sin(tt)**2)*(cos(au*pi*yy)**2)
+     &    *cos(au*pi*xx)*sin(au*pi*xx) 
+     &    + 2*(au**2)*(pi**2)*sin(tt)*sin(au*pi*xx)*cos(au*pi*yy) 
+     &    + au*pi*(sin(tt)**2)*(sin(au*pi*yy)**2)
+     &    *cos(au*pi*xx)*sin(au*pi*xx)
+
+     ffy = a1 + a0*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
+     &   + bp*pi*sin(tt)*sin(ap*pi*xx)*cos(bp*pi*yy) 
+     &   + au*pi*(sin(tt)**2)*(cos(au*pi*xx)**2)
+     &   *cos(au*pi*yy)*sin(au*pi*yy) + au*pi*(sin(tt)**2)
+     &   *(sin(au*pi*xx)**2)*cos(au*pi*yy)*sin(au*pi*yy) 
+     &   - cos(tt)*cos(au*pi*xx)*sin(au*pi*yy) 
+     &   - 2*(au**2)*(pi**2)*sin(tt)*cos(au*pi*xx)*sin(au*pi*yy)-exc1
+
+      ffz = 0.0
 
       end
 c-----------------------------------------------------------------------
@@ -112,15 +103,9 @@ c-----------------------------------------------------------------------
 
       integer i,j,k,e,eg
       real xx,yy,tt
-      real a0,ac,bcc,au,ap,bp
+      real a1,a0,ac,bcc,au,ap,bp
+      common /excoeff/ a1,a0,ac,bcc,au,ap,bp
 
-      a0  = 0.5
-      ac  = 3.0
-      bcc = 4.0
-      au  = 3.5
-      ap  = 4.0
-      bp  = 3.0
- 
       e = gllel(eg)
       xx = xm1(i,j,k,e)
       yy = ym1(i,j,k,e)
@@ -129,9 +114,10 @@ c-----------------------------------------------------------------------
       qvol = a0*cos(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
      &     + a0*(ac**2)*(pi**2)*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
      &     + a0*(bcc**2)*(pi**2)*sin(tt)*cos(ac*pi*xx)*cos(bcc*pi*yy) 
-     &     + a0*bcc*pi*(sin(tt)**2)*cos(ac*pi*xx)*cos(au*pi*xx)
-     &     *sin(au*pi*yy)*sin(bcc*pi*yy) - a0*ac*pi*(sin(tt)**2)
-     &     *sin(ac*pi*xx)*sin(au*pi*xx)*cos(au*pi*yy)*cos(bcc*pi*yy)
+     &     + a0*bcc*pi*(sin(tt)**2)*cos(ac*pi*xx)
+     &     *cos(au*pi*xx)*sin(au*pi*yy)*sin(bcc*pi*yy) 
+     &     - a0*ac*pi*(sin(tt)**2)*sin(ac*pi*xx)
+     &     *sin(au*pi*xx)*cos(au*pi*yy)*cos(bcc*pi*yy)
 
       return
       end
@@ -169,6 +155,8 @@ c-----------------------------------------------------------------------
       include 'NEKUSE'
       integer i,j,k,e,eg
       real xx,yy
+      real a1,a0,ac,bcc,au,ap,bp
+      common /excoeff/ a1,a0,ac,bcc,au,ap,bp
 
       e  = gllel(eg)
       xx = xm1(i,j,k,e)
@@ -177,7 +165,7 @@ c-----------------------------------------------------------------------
       ux   = 0.0
       uy   = 0.0
       uz   = 0.0
-      temp = 1.0
+      temp = a1
 
       return
       end
@@ -199,6 +187,17 @@ c-----------------------------------------------------------------------
       subroutine usrdat2
       include 'SIZE'
       include 'TOTAL'
+
+      real a1,a0,ac,bcc,au,ap,bp
+      common /excoeff/ a1,a0,ac,bcc,au,ap,bp
+      
+      a1  = 0.5
+      a0  = 0.25 
+      ac  = 10.0
+      bcc = 12.0
+      au  = 11.0
+      ap  = 12.0
+      bp  = 10.0
 
       return
       end
@@ -237,25 +236,25 @@ c-----------------------------------------------------------------------
 
       if (istep.eq.nsteps) call outpost(ud,vd,cd,pd,t,'err')
 
-      umx = glamax(vx,npts)
-      vmx = glamax(vy,npts)
-      pmx = glamax(pr,npts2)
+      umx = glamax(ud,npts)/glamax(ue,npts)
+      vmx = glamax(vd,npts)/glamax(ve,npts)
+      pmx = glamax(pd,npts2)/glamax(pe,npts2)
       uex = glamax(ue,npts)
       vex = glamax(ve,npts)
       pex = glamax(pe,npts2)
-      udx = gl2norm(ud,npts)
-      vdx = gl2norm(vd,npts)
-      pdx = gl2norm(pd,npts2)
+      udx = gl2norm(ud,npts)/gl2norm(ue,npts)
+      vdx = gl2norm(vd,npts)/gl2norm(ve,npts)
+      pdx = gl2norm(pd,npts2)/gl2norm(pe,npts2)
 
       unm = gl2norm(vx,npts)
       vnm = gl2norm(vy,npts)
       pnm = gl2norm(pd,npts)
 
-      cmx = glamax(t(1,1,1,1,1),npts)
-      cdx = gl2norm(cd,npts)
+      cmx = glamax(cd,npts)/glamax(ce,npts)
+      cdx = gl2norm(cd,npts)/gl2norm(ce,npts)
       cnm = gl2norm(t(1,1,1,1,1),npts)
 
-      if (nid.eq.0) then
+      if (nid.eq.0) then       ! l2err, 
          write(6,11) istep,time,udx,umx,unm,'  X err'
          write(6,11) istep,time,vdx,vmx,vnm,'  Y err'
          write(6,12) istep,time,pdx,pmx,pnm,'                P err'
