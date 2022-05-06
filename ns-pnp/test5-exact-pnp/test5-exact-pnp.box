@@ -1,0 +1,14 @@
+test5-exact-pnp-box.rea
+2                      spatial dimension
+4                      number of fields
+#
+#========================================================
+#
+Box
+-10  -10                        nelx,nely,nelz for Box
+0   1.0  1.                     x0 x1 ratio 
+0   1.0  1.                     y0 y1 ratio 
+v  ,v  ,v  ,v  ,                bc's
+t  ,t  ,t  ,t  ,                bc's
+t  ,t  ,t  ,t  ,                bc's
+t  ,t  ,t  ,t  ,                bc's
