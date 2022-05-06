@@ -1,0 +1,12 @@
+      ! NSPNP variables 
+      
+      parameter(lt=lx1*ly1*lz1*lelt)
+      
+      real a1,a0,ac,bcc,au,ap,bp,Rey,Pec
+      real z1,z2,D1cst,D2cst,Dcst,ga
+      integer ic1,ic2,iphi
+      real migration(lx1,ly1,lz1,lelt)
+      common /pnpparam/ z1,z2,D1cst,D2cst,Dcst,ga
+      common /excoeff/ a1,a0,ac,bcc,au,ap,bp,Rey,Pec
+      common /pnpidx/ ic1,ic2,iphi
+      common /pnparr/ migration
